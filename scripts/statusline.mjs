@@ -16,6 +16,7 @@ const COLORS = {
 
 const CACHE_MAX_AGE_MS = 2 * 60 * 1000;
 const FETCH_MIN_INTERVAL_MS = 60 * 1000;
+const TOKYO_TZ = "Asia/Tokyo";
 
 export function defaultInstallDir() {
   return join(homedir(), ".claude", "statusline-limits");
@@ -99,15 +100,51 @@ function formatK(value) {
   return `${(number / 1000).toFixed(1)}K`;
 }
 
-function formatReset(epochSeconds, now = Date.now()) {
-  const seconds = Number(epochSeconds);
-  const resetMs = Number.isFinite(seconds) ? seconds * 1000 : new Date(epochSeconds).getTime();
+function resetMsFrom(value) {
+  const seconds = Number(value);
+  return Number.isFinite(seconds) ? seconds * 1000 : new Date(value).getTime();
+}
+
+function resetTime(value, now = Date.now()) {
+  const resetMs = resetMsFrom(value);
   if (!Number.isFinite(resetMs)) return "";
-  const deltaMinutes = Math.max(0, Math.ceil((resetMs - now) / 60000));
-  if (deltaMinutes < 60) return ` ${deltaMinutes}m`;
-  const hours = Math.floor(deltaMinutes / 60);
-  const minutes = deltaMinutes % 60;
-  return minutes === 0 ? ` ${hours}h` : ` ${hours}h${minutes}m`;
+  const diff = resetMs - now;
+  if (diff <= 0) return "now";
+  const hours = Math.floor(diff / 3600000);
+  const minutes = Math.floor((diff % 3600000) / 60000);
+  const days = Math.floor(hours / 24);
+  if (days > 0) return `${days}d${hours % 24}h`;
+  if (hours > 0) return minutes === 0 ? `${hours}h` : `${hours}h${minutes}m`;
+  return `${minutes}m`;
+}
+
+function resetDate(value, now = Date.now()) {
+  const resetMs = resetMsFrom(value);
+  if (!Number.isFinite(resetMs)) return "";
+  const reset = new Date(resetMs);
+  const current = new Date(now);
+  const time = reset.toLocaleString("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: TOKYO_TZ,
+    hour12: false,
+  });
+  const resetDateString = reset.toLocaleDateString("ja-JP", { timeZone: TOKYO_TZ });
+  const currentDateString = current.toLocaleDateString("ja-JP", { timeZone: TOKYO_TZ });
+  if (resetDateString === currentDateString) return time;
+  const month = reset
+    .toLocaleDateString("ja-JP", { month: "numeric", timeZone: TOKYO_TZ })
+    .replace(/月/g, "");
+  const day = reset
+    .toLocaleDateString("ja-JP", { day: "numeric", timeZone: TOKYO_TZ })
+    .replace(/日/g, "");
+  return `${month}/${day} ${time}`;
+}
+
+function formatReset(value, now = Date.now()) {
+  const absolute = resetDate(value, now);
+  const relative = resetTime(value, now);
+  return absolute && relative ? ` (${absolute}|${relative})` : "";
 }
 
 function modelName(input) {
