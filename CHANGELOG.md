@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.4](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.3...v1.0.4) (2026-07-13)
+
+
+### Bug Fixes
+
+* keychain token 取得で token 無し JSON を token として誤返却しない ([9672655](https://github.com/sekka/cc-statusline-usage-limits/commit/9672655fd8d3ccc7e3c8f670d28bfd98a180fc39))
+* sync.sh が存在しない src を silent skip せず exit 1 する ([39c29e7](https://github.com/sekka/cc-statusline-usage-limits/commit/39c29e70fc4d41318a54d73e65e7dd3a193e1e14))
+* ゲージ・閾値・reset 表記を元の canonical デザインに揃える ([6c818df](https://github.com/sekka/cc-statusline-usage-limits/commit/6c818df427c1910f908dfad51cd08620c18b212e))
+
 ## [1.0.3](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.2...v1.0.3) (2026-07-13)
 
 
