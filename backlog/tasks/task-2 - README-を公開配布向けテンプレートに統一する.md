@@ -4,6 +4,7 @@ title: README を公開配布向けテンプレートに統一する
 status: To Do
 assignee: []
 created_date: '2026-07-13 03:44'
+updated_date: '2026-07-13 04:04'
 labels:
   - plugin
   - docs
@@ -57,3 +58,9 @@ ordinal: 2000
 - [ ] #3 全コマンド例のパス・リポジトリ名が実在
 - [ ] #4 ローカルレビューゲート通過
 <!-- AC:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+2026-07-13 TASK-85 規約メモ: README は # cc-statusline-usage-limits / Features / Requirements / Install / Usage / Configuration / Security disclosure / How it works / Troubleshooting / Development / Uninstall / License の順に揃える。公開読者向けに個人 home や絶対パスは書かない。Extended mode の credential 開示は維持し、読む credential、送信 endpoint、undocumented API リスク、disable と uninstall の違いを太字で明記する。現状 gap: What/Requirements/Usage/Configuration/License の切り分け不足。
+<!-- SECTION:NOTES:END -->
