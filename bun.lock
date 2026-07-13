@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "statusline-usage-limits",
+      "name": "cc-statusline-usage-limits",
       "devDependencies": {
         "bun-types": "^1.3.5",
       },

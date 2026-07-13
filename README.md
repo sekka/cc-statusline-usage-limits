@@ -11,8 +11,8 @@ Before enabling Extended mode, note the data access: **it reads `$HOME/.claude/.
 ## Install
 
 ```text
-/plugin marketplace add sekka/statusline-usage-limits
-/plugin install statusline-limits@statusline-usage-limits
+/plugin marketplace add sekka/cc-statusline-usage-limits
+/plugin install statusline-limits@cc-statusline-usage-limits
 /statusline-limits:install
 ```
 

@@ -17,14 +17,14 @@ ordinal: 2000
 <!-- SECTION:DESCRIPTION:BEGIN -->
 ## 目的
 
-このリポジトリ (statusline-usage-limits) の README を、公開配布プラグインに見合った統一テンプレートに更新する。テンプレートは tmux-usage-limits / herdr-usage-limits / herdr-tab-title / statusline-usage-limits の4リポジトリで共通にする。
+このリポジトリ (cc-statusline-usage-limits) の README を、公開配布プラグインに見合った統一テンプレートに更新する。テンプレートは tmux-usage-limits / herdr-usage-limits / herdr-tab-title / cc-statusline-usage-limits の4リポジトリで共通にする。
 
 ## 統一テンプレート(見出し順)
 
-1. `# statusline-usage-limits` + 1行説明 + 出力例(テキストでの表示例でも可)
+1. `# cc-statusline-usage-limits` + 1行説明 + 出力例(テキストでの表示例でも可)
 2. `## Features`(箇条書き 3-5 点)
 3. `## Requirements`(Claude Code、Node.js、Bun for development)
-4. `## Install`(`/plugin marketplace add sekka/statusline-usage-limits`。コピペで動くこと)
+4. `## Install`(`/plugin marketplace add sekka/cc-statusline-usage-limits`。コピペで動くこと)
 5. `## Usage`(Core install と Extended opt-in)
 6. `## Configuration`(statusLine command / refreshInterval / stable runtime path)
 7. `## How it works`(Core/Extended/cache/sync hook を1-2段落)

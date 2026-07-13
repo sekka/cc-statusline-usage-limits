@@ -1,4 +1,4 @@
-project_name: "statusline-usage-limits"
+project_name: "cc-statusline-usage-limits"
 default_status: "To Do"
 statuses: ["To Do", "In Progress", "Done"]
 labels: []

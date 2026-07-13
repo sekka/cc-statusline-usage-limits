@@ -17,14 +17,14 @@ ordinal: 1000
 <!-- SECTION:DESCRIPTION:BEGIN -->
 ## 目的
 
-このリポジトリ (statusline-usage-limits) の CI は現状未設定で、テストが CI で走らない。公開配布物として、push/PR 時に `bun test` を走らせる workflow を追加する。
+このリポジトリ (cc-statusline-usage-limits) の CI は現状未設定で、テストが CI で走らない。公開配布物として、push/PR 時に `bun test` を走らせる workflow を追加する。
 
 ## 内容
 
 - `.github/workflows/test.yml` を追加: `oven-sh/setup-bun` → `bun test`
 - テスト対象は `scripts/*.test.ts`
 - Node-compatible `.mjs` runtime は zero dependency のまま維持し、CI 依存は test 用の Bun のみに限定する
-- tmux-usage-limits / herdr-usage-limits / herdr-tab-title / statusline-usage-limits の4リポジトリで workflow 内容を同一に揃える
+- tmux-usage-limits / herdr-usage-limits / herdr-tab-title / cc-statusline-usage-limits の4リポジトリで workflow 内容を同一に揃える
 
 ## 制約
 

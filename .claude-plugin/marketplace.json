@@ -1,5 +1,5 @@
 {
-  "name": "statusline-usage-limits",
+  "name": "cc-statusline-usage-limits",
   "description": "Claude Code statusline usage-limit plugin marketplace.",
   "owner": {
     "name": "sekka"
