@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.0.3](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.2...v1.0.3) (2026-07-13)
+
+
+### Bug Fixes
+
+* limits fetcher も statusline と一緒に同期 ([d27403c](https://github.com/sekka/cc-statusline-usage-limits/commit/d27403cfa8c88e182a73fdce258a22550e50d50f))
+* statusline limits を旧表示に揃える ([5cd7a9f](https://github.com/sekka/cc-statusline-usage-limits/commit/5cd7a9f46c0ddbb3894e102f7902d1ff77a00c91))
+* 旧 statusline 完全パリティ + limits-fetch の deploy 漏れ修正 ([cf63367](https://github.com/sekka/cc-statusline-usage-limits/commit/cf633675e5fc319a72abd7956bef480e0cb53a14))
+
 ## [1.0.2](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.1...v1.0.2) (2026-07-13)
 
 
