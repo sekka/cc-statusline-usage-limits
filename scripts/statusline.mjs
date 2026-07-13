@@ -176,8 +176,13 @@ function usagePercent(contextWindow) {
 
 function renderLimit(item, options) {
   const stale = item.stale ? "*" : "";
-  const reset = item.resetsAt ? formatReset(item.resetsAt, options.now) : "";
-  return `${label(item.label, options)}${gauge(item.used, options)} ${Math.round(item.used)}%${reset}${stale}`;
+  const reset = item.resetsAt ? formatReset(item.resetsAt, options.now).trim() : "";
+  const resetDisplay = reset ? ` ${color(reset, "gray", options)}` : "";
+  return `${label(`${item.label}${stale}`, options)}${gauge(item.used, options)} ${color(
+    String(Math.round(item.used)),
+    "white",
+    options,
+  )}${color("%", "gray", options)}${resetDisplay}`;
 }
 
 function limitPercent(...values) {
