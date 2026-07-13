@@ -44,14 +44,14 @@ describe("statusline.mjs", () => {
     expect(
       renderStatusline(fixture, { cache: extendedCache, color: false, now: 2000000000000 }),
     ).toBe(
-      "Sonnet 4.5 TK:⣿⣿⣤⣀⣀ 54% 108.0K/200.0K CC5:⣿⣿⣿⣀⣀ 61% (13:33|1h) CCW:⣿⣀⣀⣀⣀ 22% (5/19 07:13|18h40m) CCF:⣿⣿⣿⣤⣀ 71% (5/19 07:13|18h40m)",
+      "Sonnet 4.5 TK:⣿⣿⣶⣀⣀ 54% 108.0K/200.0K CC5:⣿⣿⣿⣀⣀ 61% (13:33|1h0m) CCW:⣿⣄⣀⣀⣀ 22% (5/19 07:13|18h40m) CCF:⣿⣿⣿⣦⣀ 71% (5/19 07:13|18h40m)",
     );
   });
 
   test("color=true では旧 statusline と同じ limits 装飾を描画する", () => {
     const staleCache = { ...extendedCache, stale: true, timestamp: 2000000000000 - 6 * 60 * 1000 };
     expect(renderStatusline(fixture, { cache: staleCache, color: true, now: 2000000000000 })).toBe(
-      "\x1b[97mSonnet 4.5\x1b[0m \x1b[90mTK:\x1b[0m\x1b[33m⣿⣿⣤⣀⣀\x1b[0m 54% 108.0K/200.0K \x1b[90mCC5?:\x1b[0m\x1b[33m⣿⣿⣿⣀⣀\x1b[0m \x1b[97m61\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(13:33|1h)\x1b[0m \x1b[90mCCW?:\x1b[0m\x1b[90m⣿⣀⣀⣀⣀\x1b[0m \x1b[97m22\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(5/19 07:13|18h40m)\x1b[0m \x1b[90mCCF?:\x1b[0m\x1b[38;5;208m⣿⣿⣿⣤⣀\x1b[0m \x1b[97m71\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(5/19 07:13|18h40m)\x1b[0m \x1b[90m(6m ago)\x1b[0m",
+      "\x1b[97mSonnet 4.5\x1b[0m \x1b[90mTK:\x1b[0m\x1b[33m⣿⣿⣶⣀⣀\x1b[0m 54% 108.0K/200.0K \x1b[90mCC5?:\x1b[0m\x1b[33m⣿⣿⣿⣀⣀\x1b[0m \x1b[97m61\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(13:33|1h0m)\x1b[0m \x1b[90mCCW?:\x1b[0m\x1b[90m⣿⣄⣀⣀⣀\x1b[0m \x1b[97m22\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(5/19 07:13|18h40m)\x1b[0m \x1b[90mCCF?:\x1b[0m\x1b[38;5;208m⣿⣿⣿⣦⣀\x1b[0m \x1b[97m71\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(5/19 07:13|18h40m)\x1b[0m \x1b[90m(6m ago)\x1b[0m",
     );
   });
 
@@ -87,7 +87,7 @@ describe("statusline.mjs", () => {
         },
       ),
     ).toBe(
-      "Sonnet 4.5 CC5?:⣿⣿⣿⣀⣀ 61% (13:33|1h) CCW?:⣿⣀⣀⣀⣀ 22% (5/19 07:13|18h40m) CCF?:⣿⣿⣿⣤⣀ 71% (5/19 07:13|18h40m) (6m ago)",
+      "Sonnet 4.5 CC5?:⣿⣿⣿⣀⣀ 61% (13:33|1h0m) CCW?:⣿⣄⣀⣀⣀ 22% (5/19 07:13|18h40m) CCF?:⣿⣿⣿⣦⣀ 71% (5/19 07:13|18h40m) (6m ago)",
     );
 
     expect(
