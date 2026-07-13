@@ -101,8 +101,9 @@ function formatK(value) {
 
 function formatReset(epochSeconds, now = Date.now()) {
   const seconds = Number(epochSeconds);
-  if (!Number.isFinite(seconds)) return "";
-  const deltaMinutes = Math.max(0, Math.ceil((seconds * 1000 - now) / 60000));
+  const resetMs = Number.isFinite(seconds) ? seconds * 1000 : new Date(epochSeconds).getTime();
+  if (!Number.isFinite(resetMs)) return "";
+  const deltaMinutes = Math.max(0, Math.ceil((resetMs - now) / 60000));
   if (deltaMinutes < 60) return ` ${deltaMinutes}m`;
   const hours = Math.floor(deltaMinutes / 60);
   const minutes = deltaMinutes % 60;
@@ -142,36 +143,62 @@ function renderLimit(item, options) {
   return `${label(item.label, options)}${gauge(item.used, options)} ${Math.round(item.used)}%${reset}${stale}`;
 }
 
+function limitPercent(...values) {
+  for (const value of values) {
+    const used = pct(value);
+    if (used !== null) return used;
+  }
+  return null;
+}
+
+function displayNameForScope(limit) {
+  return (
+    limit?.scope?.model?.display_name ||
+    limit?.scope?.model?.name ||
+    limit?.scope?.model?.id ||
+    limit?.scope?.model ||
+    limit?.label
+  );
+}
+
+function itemFromLimit(labelText, value, cache, now) {
+  if (!value || typeof value !== "object") return null;
+  const usage = value?.usage || value;
+  const used = limitPercent(usage?.percent, usage?.utilization, usage?.used_percentage);
+  if (used === null) return null;
+  return {
+    label: labelText,
+    used,
+    resetsAt: usage?.resets_at || value?.resets_at,
+    stale: Boolean(cache.stale || (cache.timestamp && now - cache.timestamp > CACHE_MAX_AGE_MS)),
+  };
+}
+
 function cacheLimits(cache, now) {
+  const items = [
+    itemFromLimit("CC5", cache?.five_hour, cache ?? {}, now),
+    itemFromLimit("CCW", cache?.seven_day, cache ?? {}, now),
+  ].filter(Boolean);
+
   const limits = Array.isArray(cache?.limits) ? cache.limits : [];
-  return limits
-    .map((limit) => {
-      const usage = limit?.usage || limit;
-      const used = pct(usage?.used_percentage);
-      if (used === null) return null;
-      const bucket = String(limit?.bucket || limit?.type || "");
-      const scopeType = String(limit?.scope?.type || "");
-      const displayName =
-        limit?.scope?.model?.display_name ||
-        limit?.scope?.model?.name ||
-        limit?.scope?.model?.id ||
-        limit?.scope?.model ||
-        limit?.label;
-      let itemLabel = null;
-      if (bucket === "five_hour" || limit?.name === "five_hour") itemLabel = "CC5";
-      if (bucket === "seven_day" || limit?.name === "seven_day") itemLabel = "CCW";
-      if (scopeType === "weekly_scoped" || bucket === "weekly_scoped") itemLabel = displayName;
-      if (!itemLabel) return null;
-      return {
-        label: String(itemLabel),
-        used,
-        resetsAt: usage?.resets_at || limit?.resets_at,
-        stale: Boolean(
-          cache.stale || (cache.timestamp && now - cache.timestamp > CACHE_MAX_AGE_MS),
-        ),
-      };
-    })
-    .filter(Boolean);
+  for (const limit of limits) {
+    const bucket = String(limit?.bucket || limit?.type || "");
+    const scopeType = String(limit?.scope?.type || "");
+    let itemLabel = null;
+    if (bucket === "five_hour" || limit?.name === "five_hour") itemLabel = "CC5";
+    if (bucket === "seven_day" || limit?.name === "seven_day") itemLabel = "CCW";
+    if (
+      limit?.kind === "weekly_scoped" ||
+      scopeType === "weekly_scoped" ||
+      bucket === "weekly_scoped"
+    ) {
+      itemLabel = displayNameForScope(limit);
+    }
+    if (!itemLabel) continue;
+    const item = itemFromLimit(String(itemLabel), limit, cache ?? {}, now);
+    if (item) items.push(item);
+  }
+  return items;
 }
 
 export function renderStatusline(input, options = {}) {
