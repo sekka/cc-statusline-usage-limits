@@ -44,7 +44,7 @@ describe("statusline.mjs", () => {
     expect(
       renderStatusline(fixture, { cache: extendedCache, color: false, now: 2000000000000 }),
     ).toBe(
-      "Sonnet 4.5 TK:⣿⣿⣤⣀⣀ 54% 108.0K/200.0K CC5:⣿⣿⣿⣀⣀ 61% 1h CCW:⣿⣀⣀⣀⣀ 22% 18h40m Fable:⣿⣿⣿⣤⣀ 71% 18h40m Opus:⣿⣿⣀⣀⣀ 43% 18h40m",
+      "Sonnet 4.5 TK:⣿⣿⣤⣀⣀ 54% 108.0K/200.0K CC5:⣿⣿⣿⣀⣀ 61% (13:33|1h) CCW:⣿⣀⣀⣀⣀ 22% (5/19 07:13|18h40m) Fable:⣿⣿⣿⣤⣀ 71% (5/19 07:13|18h40m) Opus:⣿⣿⣀⣀⣀ 43% (5/19 07:13|18h40m)",
     );
   });
 
