@@ -8,6 +8,7 @@ import {
   getToken,
   successRecord,
   tokenFromCredentialsJson,
+  tokenFromKeychain,
   writeCacheRecord,
 } from "./limits-fetch.mjs";
 
@@ -27,6 +28,13 @@ describe("limits-fetch.mjs", () => {
       execFileImpl: async () => ({ stdout: "keychain-token\n" }),
     });
     expect(token).toBe("keychain-token");
+  });
+
+  test("Keychain stdout が credentials JSON の場合は accessToken を抽出する", async () => {
+    const token = await tokenFromKeychain(async () => ({
+      stdout: `${JSON.stringify({ claudeAiOauth: { accessToken: "x".repeat(20) } })}\n`,
+    }));
+    expect(token).toBe("x".repeat(20));
   });
 
   test("success record と failure record を生成する", () => {
