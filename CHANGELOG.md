@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.0](https://github.com/sekka/cc-statusline-usage-limits/compare/v0.2.0...v1.0.0) (2026-07-13)
+
+
+### Miscellaneous Chores
+
+* v1.0.0 リリースを発行する ([535fbcb](https://github.com/sekka/cc-statusline-usage-limits/commit/535fbcb376ee5fd6a10eae1f1234c35e5aa36f51))
+
 ## [0.2.0](https://github.com/sekka/cc-statusline-usage-limits/compare/v0.1.0...v0.2.0) (2026-07-13)
 
 
