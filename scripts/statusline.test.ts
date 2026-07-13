@@ -2,7 +2,7 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
-import { maybeSpawnLimitsFetch, parseInput, renderStatusline } from "./statusline.mjs";
+import { maybeSpawnLimitsFetch, parseInput, readCache, renderStatusline } from "./statusline.mjs";
 
 const fixture = {
   model: { display_name: "Sonnet 4.5" },
@@ -44,15 +44,77 @@ describe("statusline.mjs", () => {
     expect(
       renderStatusline(fixture, { cache: extendedCache, color: false, now: 2000000000000 }),
     ).toBe(
-      "Sonnet 4.5 TK:⣿⣿⣤⣀⣀ 54% 108.0K/200.0K CC5:⣿⣿⣿⣀⣀ 61% (13:33|1h) CCW:⣿⣀⣀⣀⣀ 22% (5/19 07:13|18h40m) Fable:⣿⣿⣿⣤⣀ 71% (5/19 07:13|18h40m) Opus:⣿⣿⣀⣀⣀ 43% (5/19 07:13|18h40m)",
+      "Sonnet 4.5 TK:⣿⣿⣤⣀⣀ 54% 108.0K/200.0K CC5:⣿⣿⣿⣀⣀ 61% (13:33|1h) CCW:⣿⣀⣀⣀⣀ 22% (5/19 07:13|18h40m) CCF:⣿⣿⣿⣤⣀ 71% (5/19 07:13|18h40m)",
     );
   });
 
   test("color=true では旧 statusline と同じ limits 装飾を描画する", () => {
-    const staleCache = { ...extendedCache, stale: true };
+    const staleCache = { ...extendedCache, stale: true, timestamp: 2000000000000 - 6 * 60 * 1000 };
     expect(renderStatusline(fixture, { cache: staleCache, color: true, now: 2000000000000 })).toBe(
-      "\x1b[97mSonnet 4.5\x1b[0m \x1b[90mTK:\x1b[0m\x1b[33m⣿⣿⣤⣀⣀\x1b[0m 54% 108.0K/200.0K \x1b[90mCC5*:\x1b[0m\x1b[33m⣿⣿⣿⣀⣀\x1b[0m \x1b[97m61\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(13:33|1h)\x1b[0m \x1b[90mCCW*:\x1b[0m\x1b[90m⣿⣀⣀⣀⣀\x1b[0m \x1b[97m22\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(5/19 07:13|18h40m)\x1b[0m \x1b[90mFable*:\x1b[0m\x1b[38;5;208m⣿⣿⣿⣤⣀\x1b[0m \x1b[97m71\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(5/19 07:13|18h40m)\x1b[0m \x1b[90mOpus*:\x1b[0m\x1b[90m⣿⣿⣀⣀⣀\x1b[0m \x1b[97m43\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(5/19 07:13|18h40m)\x1b[0m",
+      "\x1b[97mSonnet 4.5\x1b[0m \x1b[90mTK:\x1b[0m\x1b[33m⣿⣿⣤⣀⣀\x1b[0m 54% 108.0K/200.0K \x1b[90mCC5?:\x1b[0m\x1b[33m⣿⣿⣿⣀⣀\x1b[0m \x1b[97m61\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(13:33|1h)\x1b[0m \x1b[90mCCW?:\x1b[0m\x1b[90m⣿⣀⣀⣀⣀\x1b[0m \x1b[97m22\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(5/19 07:13|18h40m)\x1b[0m \x1b[90mCCF?:\x1b[0m\x1b[38;5;208m⣿⣿⣿⣤⣀\x1b[0m \x1b[97m71\x1b[0m\x1b[90m%\x1b[0m \x1b[90m(5/19 07:13|18h40m)\x1b[0m \x1b[90m(6m ago)\x1b[0m",
     );
+  });
+
+  test("cache freshness uses a 5 minute threshold", async () => {
+    const dir = join(tmpdir(), `statusline-cache-${process.pid}-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const cacheFile = join(dir, "cache.json");
+    try {
+      await writeFile(
+        cacheFile,
+        JSON.stringify({ timestamp: 2000000000000 - 4 * 60 * 1000, data: extendedCache.data }),
+      );
+      expect(readCache(cacheFile, 2000000000000)?.stale).toBe(false);
+
+      await writeFile(
+        cacheFile,
+        JSON.stringify({ timestamp: 2000000000000 - 6 * 60 * 1000, data: extendedCache.data }),
+      );
+      expect(readCache(cacheFile, 2000000000000)?.stale).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("stale age suffix is emitted once only when cached limits render", () => {
+    expect(
+      renderStatusline(
+        { model: { display_name: "Sonnet 4.5" } },
+        {
+          cache: { data: extendedCache.data, stale: true, timestamp: 2000000000000 - 6 * 60 * 1000 },
+          color: false,
+          now: 2000000000000,
+        },
+      ),
+    ).toBe(
+      "Sonnet 4.5 CC5?:⣿⣿⣿⣀⣀ 61% (13:33|1h) CCW?:⣿⣀⣀⣀⣀ 22% (5/19 07:13|18h40m) CCF?:⣿⣿⣿⣤⣀ 71% (5/19 07:13|18h40m) (6m ago)",
+    );
+
+    expect(
+      renderStatusline(
+        { model: { display_name: "Sonnet 4.5" } },
+        {
+          cache: {
+            data: extendedCache.data,
+            stale: false,
+            timestamp: 2000000000000 - 4 * 60 * 1000,
+          },
+          color: false,
+          now: 2000000000000,
+        },
+      ),
+    ).not.toContain("ago");
+
+    expect(
+      renderStatusline(
+        { model: { display_name: "Sonnet 4.5" } },
+        {
+          cache: { data: {}, stale: true, timestamp: 2000000000000 - 6 * 60 * 1000 },
+          color: false,
+          now: 2000000000000,
+        },
+      ),
+    ).toBe("Sonnet 4.5");
   });
 
   test("malformed stdin は空オブジェクトとして扱う", () => {

@@ -14,7 +14,7 @@ const COLORS = {
   red: "\x1b[91m",
 };
 
-const CACHE_MAX_AGE_MS = 2 * 60 * 1000;
+const CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 const FETCH_MIN_INTERVAL_MS = 60 * 1000;
 const TOKYO_TZ = "Asia/Tokyo";
 
@@ -51,6 +51,7 @@ export function readCache(cacheFile = defaultCacheFile(), now = Date.now()) {
     if (!record || !record.data) return null;
     return {
       data: record.data,
+      timestamp: typeof record.timestamp === "number" ? record.timestamp : undefined,
       stale:
         typeof record.timestamp === "number" ? now - record.timestamp > CACHE_MAX_AGE_MS : true,
     };
@@ -175,7 +176,7 @@ function usagePercent(contextWindow) {
 }
 
 function renderLimit(item, options) {
-  const stale = item.stale ? "*" : "";
+  const stale = item.stale ? "?" : "";
   const reset = item.resetsAt ? formatReset(item.resetsAt, options.now).trim() : "";
   const resetDisplay = reset ? ` ${color(reset, "gray", options)}` : "";
   return `${label(`${item.label}${stale}`, options)}${gauge(item.used, options)} ${color(
@@ -191,16 +192,6 @@ function limitPercent(...values) {
     if (used !== null) return used;
   }
   return null;
-}
-
-function displayNameForScope(limit) {
-  return (
-    limit?.scope?.model?.display_name ||
-    limit?.scope?.model?.name ||
-    limit?.scope?.model?.id ||
-    limit?.scope?.model ||
-    limit?.label
-  );
 }
 
 function itemFromLimit(labelText, value, cache, now) {
@@ -234,7 +225,7 @@ function cacheLimits(cache, now) {
       scopeType === "weekly_scoped" ||
       bucket === "weekly_scoped"
     ) {
-      itemLabel = displayNameForScope(limit);
+      itemLabel = limit?.scope?.model?.display_name === "Fable" ? "CCF" : null;
     }
     if (!itemLabel) continue;
     const item = itemFromLimit(String(itemLabel), limit, cache ?? {}, now);
@@ -266,12 +257,31 @@ export function renderStatusline(input, options = {}) {
 
   const cacheItems = cacheLimits(options.cache?.data, renderOptions.now).map((item) => ({
     ...item,
-    stale: item.stale || Boolean(options.cache?.stale),
+    stale:
+      item.stale ||
+      Boolean(options.cache?.stale) ||
+      (typeof options.cache?.timestamp === "number" &&
+        renderOptions.now - options.cache.timestamp > CACHE_MAX_AGE_MS),
   }));
   const limits = cacheItems.length
     ? cacheItems
     : [coreRateLimit(input, "five_hour"), coreRateLimit(input, "seven_day")].filter(Boolean);
   for (const item of limits) parts.push(renderLimit(item, renderOptions));
+  if (
+    cacheItems.length > 0 &&
+    (options.cache?.stale ||
+      (typeof options.cache?.timestamp === "number" &&
+        renderOptions.now - options.cache.timestamp > CACHE_MAX_AGE_MS)) &&
+    typeof options.cache?.timestamp === "number"
+  ) {
+    parts.push(
+      color(
+        `(${Math.floor((renderOptions.now - options.cache.timestamp) / 60000)}m ago)`,
+        "gray",
+        renderOptions,
+      ),
+    );
+  }
   return parts.join(" ");
 }
 
