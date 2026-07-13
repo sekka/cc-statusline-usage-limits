@@ -13,6 +13,11 @@ deploy_file() {
   src="${CLAUDE_PLUGIN_ROOT}/scripts/${name}"
   dest="${dest_dir}/${name}"
 
+  if [ ! -f "${src}" ]; then
+    echo "sync.sh: source not found: ${src}" >&2
+    exit 1
+  fi
+
   src_hash="$(shasum -a 256 "${src}" | cut -d ' ' -f 1)"
   dest_hash=""
   if [ -f "${dest}" ]; then
