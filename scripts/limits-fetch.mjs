@@ -36,10 +36,10 @@ export async function tokenFromKeychain(execFileImpl = execFileAsync) {
     const text = String(stdout).trim();
     if (!text) return null;
     try {
-      const token = tokenFromCredentialsJson(text);
-      if (token) return token;
-    } catch {}
-    return text;
+      return tokenFromCredentialsJson(text) ?? null;
+    } catch {
+      return text;
+    }
   } catch {
     return null;
   }

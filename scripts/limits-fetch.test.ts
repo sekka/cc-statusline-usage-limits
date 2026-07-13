@@ -37,6 +37,13 @@ describe("limits-fetch.mjs", () => {
     expect(token).toBe("x".repeat(20));
   });
 
+  test("Keychain stdout が token 無しの valid JSON の場合は null を返す(JSON 全体を token 化しない)", async () => {
+    const token = await tokenFromKeychain(async () => ({
+      stdout: `${JSON.stringify({ foo: "bar" })}\n`,
+    }));
+    expect(token).toBeNull();
+  });
+
   test("success record と failure record を生成する", () => {
     const data = { limits: [] };
     expect(successRecord(data, 123)).toEqual({ timestamp: 123, lastAttempt: 123, data });

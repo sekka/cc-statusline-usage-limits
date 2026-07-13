@@ -70,23 +70,23 @@ function label(text, options) {
 }
 
 function percentColor(pct) {
-  if (pct >= 90) return "red";
-  if (pct >= 70) return "orange";
-  if (pct >= 50) return "yellow";
+  if (pct > 90) return "red";
+  if (pct > 70) return "orange";
+  if (pct > 50) return "yellow";
   return "gray";
 }
 
 function gauge(pct, options) {
   const clamped = Math.max(0, Math.min(100, Number.isFinite(pct) ? pct : 0));
-  const full = Math.floor(clamped / 20);
-  const rem = clamped % 20;
-  const partials = ["", "⣀", "⣤", "⣶", "⣿"];
-  const partialIndex = Math.min(4, Math.floor(rem / 5));
-  const cells = [];
-  for (let i = 0; i < full; i += 1) cells.push("⣿");
-  if (cells.length < 5 && partialIndex > 0) cells.push(partials[partialIndex]);
-  while (cells.length < 5) cells.push("⣀");
-  return color(cells.slice(0, 5).join(""), percentColor(clamped), options);
+  const len = 5;
+  const chars = ["⣀", "⣄", "⣤", "⣦", "⣶", "⣷", "⣿"];
+  const steps = len * (chars.length - 1);
+  const cur = Math.round((clamped / 100) * steps);
+  const full = Math.floor(cur / (chars.length - 1));
+  const partial = cur % (chars.length - 1);
+  const empty = len - full - (partial > 0 ? 1 : 0);
+  const bar = "⣿".repeat(full) + (partial > 0 ? chars[partial] : "") + "⣀".repeat(empty);
+  return color(bar, percentColor(clamped), options);
 }
 
 function pct(value) {
@@ -115,7 +115,7 @@ function resetTime(value, now = Date.now()) {
   const minutes = Math.floor((diff % 3600000) / 60000);
   const days = Math.floor(hours / 24);
   if (days > 0) return `${days}d${hours % 24}h`;
-  if (hours > 0) return minutes === 0 ? `${hours}h` : `${hours}h${minutes}m`;
+  if (hours > 0) return `${hours}h${minutes}m`;
   return `${minutes}m`;
 }
 
