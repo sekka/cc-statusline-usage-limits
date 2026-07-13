@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.1](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.0...v1.0.1) (2026-07-13)
+
+
+### Bug Fixes
+
+* reset 表示を絶対時刻付きに戻す ([fcdade5](https://github.com/sekka/cc-statusline-usage-limits/commit/fcdade5e4b3cc14df5f60b276d268d79e60e3d64))
+
 ## [1.0.0](https://github.com/sekka/cc-statusline-usage-limits/compare/v0.2.0...v1.0.0) (2026-07-13)
 
 
