@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.1...v1.0.2) (2026-07-13)
+
+
+### Bug Fixes
+
+* statusline limits の装飾を旧表示に揃える ([6b51787](https://github.com/sekka/cc-statusline-usage-limits/commit/6b51787385cb0e116b0429be7b7ec7aa14f60aad))
+
 ## [1.0.1](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.0...v1.0.1) (2026-07-13)
 
 
