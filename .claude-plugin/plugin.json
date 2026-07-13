@@ -1,0 +1,22 @@
+{
+  "name": "statusline-limits",
+  "version": "0.1.0",
+  "description": "Statusline rate-limit gauges for Claude Code.",
+  "author": {
+    "name": "sekka"
+  },
+  "skills": "./skills/",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/sync.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

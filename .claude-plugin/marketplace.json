@@ -1,0 +1,14 @@
+{
+  "name": "statusline-usage-limits",
+  "description": "Claude Code statusline usage-limit plugin marketplace.",
+  "owner": {
+    "name": "sekka"
+  },
+  "plugins": [
+    {
+      "name": "statusline-limits",
+      "description": "Claude Code statusline rate-limit gauges with an optional extended usage fetcher.",
+      "source": "./"
+    }
+  ]
+}
