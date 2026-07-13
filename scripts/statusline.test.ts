@@ -19,16 +19,20 @@ const fixture = {
 
 const extendedCache = {
   data: {
+    five_hour: { percent: 61, resets_at: "2033-05-18T04:33:20.000Z" },
+    seven_day: { percent: 22, resets_at: "2033-05-18T22:13:20.000Z" },
     limits: [
-      { bucket: "five_hour", usage: { used_percentage: 61, resets_at: 2000003600 } },
-      { bucket: "seven_day", usage: { used_percentage: 22, resets_at: 2000067200 } },
       {
-        scope: { type: "weekly_scoped", model: { display_name: "Fable" } },
-        usage: { used_percentage: 71, resets_at: 2000067200 },
+        kind: "weekly_scoped",
+        percent: 71,
+        resets_at: "2033-05-18T22:13:20.000Z",
+        scope: { model: { display_name: "Fable" } },
       },
       {
-        scope: { type: "weekly_scoped", model: { display_name: "Opus" } },
-        usage: { used_percentage: 43, resets_at: 2000067200 },
+        kind: "weekly_scoped",
+        percent: 43,
+        resets_at: "2033-05-18T22:13:20.000Z",
+        scope: { model: { display_name: "Opus" } },
       },
     ],
   },

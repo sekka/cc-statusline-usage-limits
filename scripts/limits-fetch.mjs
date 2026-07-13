@@ -33,8 +33,13 @@ export async function tokenFromKeychain(execFileImpl = execFileAsync) {
       "Claude Code-credentials",
       "-w",
     ]);
-    const token = String(stdout).trim();
-    return token || null;
+    const text = String(stdout).trim();
+    if (!text) return null;
+    try {
+      const token = tokenFromCredentialsJson(text);
+      if (token) return token;
+    } catch {}
+    return text;
   } catch {
     return null;
   }
