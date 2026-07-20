@@ -26,7 +26,7 @@ If the existing `statusLine` already points at `node $HOME/.claude/statusline-li
 
 ## Extended opt-in
 
-Extended mode is enabled only when `$HOME/.claude/statusline-limits/limits-fetch.mjs` exists. Before copying `${CLAUDE_PLUGIN_ROOT}/scripts/limits-fetch.mjs`, disclose this exactly:
+Extended mode is enabled only when `$HOME/.claude/statusline-limits/limits-fetch.mjs` and `$HOME/.claude/statusline-limits/.extended-approved` both exist. Before copying `${CLAUDE_PLUGIN_ROOT}/scripts/limits-fetch.mjs`, disclose this exactly:
 
 - **It reads `$HOME/.claude/.credentials.json`, then falls back to the macOS Keychain item `Claude Code-credentials`.**
 - **It sends the bearer token to `https://api.anthropic.com/api/oauth/usage`.**
