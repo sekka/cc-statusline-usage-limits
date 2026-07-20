@@ -35,4 +35,3 @@ deploy_file() {
 }
 
 deploy_file "statusline.mjs"
-deploy_file "limits-fetch.mjs"

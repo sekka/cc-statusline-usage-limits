@@ -81,7 +81,11 @@ describe("statusline.mjs", () => {
       renderStatusline(
         { model: { display_name: "Sonnet 4.5" } },
         {
-          cache: { data: extendedCache.data, stale: true, timestamp: 2000000000000 - 6 * 60 * 1000 },
+          cache: {
+            data: extendedCache.data,
+            stale: true,
+            timestamp: 2000000000000 - 6 * 60 * 1000,
+          },
           color: false,
           now: 2000000000000,
         },
@@ -117,6 +121,70 @@ describe("statusline.mjs", () => {
     ).toBe("Sonnet 4.5");
   });
 
+  test("未来 timestamp の stale age suffix は 0m ago に丸める", () => {
+    expect(
+      renderStatusline(
+        { model: { display_name: "Sonnet 4.5" } },
+        {
+          cache: {
+            data: extendedCache.data,
+            stale: true,
+            timestamp: 2000000000000 + 60 * 60 * 1000,
+          },
+          color: false,
+          now: 2000000000000,
+        },
+      ),
+    ).toContain("(0m ago)");
+  });
+
+  test("未来の timestamp を持つ cache は stale 扱いにする", async () => {
+    const dir = join(tmpdir(), `statusline-poison-${process.pid}-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    const cacheFile = join(dir, "cache.json");
+    try {
+      await writeFile(
+        cacheFile,
+        JSON.stringify({ timestamp: 2000000000000 + 60 * 60 * 1000, data: extendedCache.data }),
+      );
+      expect(readCache(cacheFile, 2000000000000)?.stale).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("未来の lastAttempt が書かれていても fetch は skip されない", async () => {
+    const dir = join(tmpdir(), `statusline-poison-fetch-${process.pid}-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "limits-fetch.mjs"), "");
+    await writeFile(join(dir, ".extended-approved"), "");
+    const cacheFile = join(dir, "cache.json");
+    let spawned = 0;
+    try {
+      await writeFile(
+        cacheFile,
+        JSON.stringify({
+          timestamp: 2000000000000 + 60 * 60 * 1000,
+          lastAttempt: 2000000000000 + 60 * 60 * 1000,
+          data: extendedCache.data,
+        }),
+      );
+      const didSpawn = maybeSpawnLimitsFetch({
+        scriptDir: dir,
+        cacheFile,
+        now: 2000000000000,
+        spawnImpl: () => {
+          spawned += 1;
+          return { unref() {} };
+        },
+      });
+      expect(didSpawn).toBe(true);
+      expect(spawned).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("malformed stdin は空オブジェクトとして扱う", () => {
     expect(parseInput("{not json")).toEqual({});
   });
@@ -135,10 +203,32 @@ describe("statusline.mjs", () => {
     expect(spawned).toBe(0);
   });
 
-  test("fetcher が存在し取得間隔を過ぎていれば spawn する", async () => {
+  test("fetcher が存在しても同意マーカーが無ければ spawn しない", async () => {
     const dir = join(tmpdir(), `statusline-limits-${process.pid}-${Date.now()}`);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, "limits-fetch.mjs"), "");
+    let spawned = 0;
+    try {
+      const didSpawn = maybeSpawnLimitsFetch({
+        scriptDir: dir,
+        cacheFile: join(dir, "missing-cache.json"),
+        spawnImpl: () => {
+          spawned += 1;
+          return { unref() {} };
+        },
+      });
+      expect(didSpawn).toBe(false);
+      expect(spawned).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fetcher と同意マーカーが存在し取得間隔を過ぎていれば spawn する", async () => {
+    const dir = join(tmpdir(), `statusline-limits-approved-${process.pid}-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "limits-fetch.mjs"), "");
+    await writeFile(join(dir, ".extended-approved"), "");
     let spawned = 0;
     try {
       const didSpawn = maybeSpawnLimitsFetch({

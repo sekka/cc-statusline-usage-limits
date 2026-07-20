@@ -53,7 +53,9 @@ export function readCache(cacheFile = defaultCacheFile(), now = Date.now()) {
       data: record.data,
       timestamp: typeof record.timestamp === "number" ? record.timestamp : undefined,
       stale:
-        typeof record.timestamp === "number" ? now - record.timestamp > CACHE_MAX_AGE_MS : true,
+        typeof record.timestamp === "number"
+          ? record.timestamp > now || now - record.timestamp > CACHE_MAX_AGE_MS
+          : true,
     };
   } catch {
     return null;
@@ -274,13 +276,11 @@ export function renderStatusline(input, options = {}) {
         renderOptions.now - options.cache.timestamp > CACHE_MAX_AGE_MS)) &&
     typeof options.cache?.timestamp === "number"
   ) {
-    parts.push(
-      color(
-        `(${Math.floor((renderOptions.now - options.cache.timestamp) / 60000)}m ago)`,
-        "gray",
-        renderOptions,
-      ),
+    const ageMinutes = Math.max(
+      0,
+      Math.floor((renderOptions.now - options.cache.timestamp) / 60000),
     );
+    parts.push(color(`(${ageMinutes}m ago)`, "gray", renderOptions));
   }
   return parts.join(" ");
 }
@@ -290,7 +290,8 @@ function shouldFetch(cacheFile, now = Date.now()) {
     const record = parseCache(readFileSync(cacheFile, "utf8"));
     if (!record) return true;
     const lastAttempt = Number(record.lastAttempt || record.timestamp || 0);
-    return !Number.isFinite(lastAttempt) || now - lastAttempt > FETCH_MIN_INTERVAL_MS;
+    if (!Number.isFinite(lastAttempt) || lastAttempt > now) return true;
+    return now - lastAttempt > FETCH_MIN_INTERVAL_MS;
   } catch {
     return true;
   }
@@ -304,9 +305,12 @@ export function maybeSpawnLimitsFetch({
   statImpl = statSync,
 } = {}) {
   const fetcherPath = join(scriptDir, "limits-fetch.mjs");
+  const approvalPath = join(scriptDir, ".extended-approved");
   try {
     const stat = statImpl(fetcherPath);
     if (!stat.isFile()) return false;
+    const approvalStat = statImpl(approvalPath);
+    if (!approvalStat.isFile()) return false;
   } catch {
     return false;
   }
