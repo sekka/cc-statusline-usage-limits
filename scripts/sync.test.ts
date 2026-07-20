@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
 
 describe("sync.sh", () => {
-  test("statusline.mjs と limits-fetch.mjs を同じ dest に deploy する", async () => {
+  test("statusline.mjs のみ deploy し limits-fetch.mjs は配備しない", async () => {
     const dir = join(tmpdir(), `statusline-sync-${process.pid}-${Date.now()}`);
     const pluginRoot = join(dir, "plugin");
     const home = join(dir, "home");
@@ -31,11 +31,12 @@ describe("sync.sh", () => {
         proc.exited,
       ]);
       expect({ code, stdout, stderr }).toEqual({ code: 0, stdout: "", stderr: "" });
-      await expect(readFile(join(home, ".claude", "statusline-limits", "statusline.mjs"), "utf8"))
-        .resolves.toBe("statusline\n");
+      await expect(
+        readFile(join(home, ".claude", "statusline-limits", "statusline.mjs"), "utf8"),
+      ).resolves.toBe("statusline\n");
       await expect(
         readFile(join(home, ".claude", "statusline-limits", "limits-fetch.mjs"), "utf8"),
-      ).resolves.toBe("fetcher\n");
+      ).rejects.toThrow();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

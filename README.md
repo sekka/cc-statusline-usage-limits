@@ -94,6 +94,7 @@ In Extended mode, `limits-fetch.mjs` refreshes cached usage data in `$HOME/.clau
 - If no statusline appears, confirm Claude Code's `statusLine.command` points to `$HOME/.claude/statusline-limits/statusline.mjs`.
 - If Extended mode data is missing, rerun `/statusline-limits:install` and approve copying `limits-fetch.mjs`.
 - If output looks stale, remove `$HOME/.claude/statusline-limits/cache.json` and wait for the next refresh.
+- If `$HOME/.claude/statusline-limits/limits-fetch.mjs` exists but you never approved Extended mode through `/statusline-limits:install` (an older SessionStart hook deployed it unconditionally before this fix), remove it manually: `rm $HOME/.claude/statusline-limits/limits-fetch.mjs $HOME/.claude/statusline-limits/cache.json`. Extended mode is detected only by that file's presence, so deleting it reverts to Core mode without a full uninstall.
 
 ## Development
 
