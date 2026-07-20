@@ -73,7 +73,7 @@ function percentColor(pct) {
   if (pct > 90) return "red";
   if (pct > 70) return "orange";
   if (pct > 50) return "yellow";
-  return "gray";
+  return "white";
 }
 
 function gauge(pct, options) {
