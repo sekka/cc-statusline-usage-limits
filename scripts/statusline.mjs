@@ -53,7 +53,9 @@ export function readCache(cacheFile = defaultCacheFile(), now = Date.now()) {
       data: record.data,
       timestamp: typeof record.timestamp === "number" ? record.timestamp : undefined,
       stale:
-        typeof record.timestamp === "number" ? now - record.timestamp > CACHE_MAX_AGE_MS : true,
+        typeof record.timestamp === "number"
+          ? record.timestamp > now || now - record.timestamp > CACHE_MAX_AGE_MS
+          : true,
     };
   } catch {
     return null;
@@ -290,7 +292,8 @@ function shouldFetch(cacheFile, now = Date.now()) {
     const record = parseCache(readFileSync(cacheFile, "utf8"));
     if (!record) return true;
     const lastAttempt = Number(record.lastAttempt || record.timestamp || 0);
-    return !Number.isFinite(lastAttempt) || now - lastAttempt > FETCH_MIN_INTERVAL_MS;
+    if (!Number.isFinite(lastAttempt) || lastAttempt > now) return true;
+    return now - lastAttempt > FETCH_MIN_INTERVAL_MS;
   } catch {
     return true;
   }
