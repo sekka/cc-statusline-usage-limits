@@ -1,6 +1,6 @@
 {
   "name": "cc-statusline-usage-limits",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "type": "module",
   "scripts": {

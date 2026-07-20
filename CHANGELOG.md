@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.5](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.4...v1.0.5) (2026-07-20)
+
+
+### Bug Fixes
+
+* 低使用率時のゲージ色を gray から white に変更 ([320e7d3](https://github.com/sekka/cc-statusline-usage-limits/commit/320e7d3407349537d984084552b8fc79c2d5e0f5))
+* 低使用率時のゲージ色を gray から white に変更 ([ff8174e](https://github.com/sekka/cc-statusline-usage-limits/commit/ff8174e75de96d5fca29c1c85bd727bef6712d92))
+
 ## [1.0.4](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.3...v1.0.4) (2026-07-13)
 
 
