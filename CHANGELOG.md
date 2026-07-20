@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.6](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.5...v1.0.6) (2026-07-20)
+
+
+### Bug Fixes
+
+* cache の未来 timestamp/lastAttempt を無害化し表示凍結を防ぐ ([8058f67](https://github.com/sekka/cc-statusline-usage-limits/commit/8058f67d5d941deef0a4fd79dc775b0ca4b2380b))
+* Extended mode に同意マーカーを要求する ([1ac1fb0](https://github.com/sekka/cc-statusline-usage-limits/commit/1ac1fb088295b7c9b458486bf46436e914df51e6))
+* SessionStart sync から limits-fetch.mjs 配備を外し opt-in を実効化する ([8ccc0fa](https://github.com/sekka/cc-statusline-usage-limits/commit/8ccc0faa21ad524d407a0eabe4cb15ae86172cd4))
+* stale 表示の経過分を下限で丸める ([1c44f4e](https://github.com/sekka/cc-statusline-usage-limits/commit/1c44f4e436443db6cab4c6c177a8f3098f6e2e9e))
+* 毒 cache 修正と Extended mode の opt-in 化 (M1) ([1e3aff3](https://github.com/sekka/cc-statusline-usage-limits/commit/1e3aff3ec05e41741dab4c72dba73b2e7521a36d))
+
 ## [1.0.5](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.4...v1.0.5) (2026-07-20)
 
 
