@@ -8,7 +8,8 @@ updated_date: '2026-07-20 10:30'
 labels:
   - feature
   - setup
-dependencies: []
+dependencies:
+  - TASK-9
 ordinal: 8000
 ---
 
@@ -33,7 +34,7 @@ ordinal: 8000
 
 ## 実装ポイント
 
-- 作業リポジトリは sekka/herdr-tab-title (dotfiles 環境では開発しない)。ローカルチェックアウト: home/config/herdr/plugins/github/dotfiles.tab-title-4a80a6339f78/、pin は setup/herdr-plugins.txt の latest sentinel。
+- 作業リポジトリは sekka/herdr-tab-title (dotfiles 環境では開発しない)。ローカルチェックアウト: home/config/herdr/plugins/github/dotfiles.tab-title-4a80a6339f78/、pin は setup/herdr-plugins.txt の latest sentinel。TASK-9 完了後の checkout パスは sekka.tab-title-... になる。
 - run.ts の composeAgentLabel (line 54 付近) に ID prefix を追加。shortPaneId 相当は herdr-label-sync.ts:36-39 から移植。
 - label-sync の computeLabel / PREFIX_RE は [pXX] 前提なのでそのまま移植せず「pD9: 」形式に書き直す。strip 正規表現は新形式 (^p[0-9A-Z]+:\s*) と旧形式 (^\[p[0-9A-Z]*\]\s\*) の両方を剥がすこと — 既存ペインに旧形式ラベルが残っており、二重 prefix を防ぐため。
 - prefix と本文の合成はタブ・ペインで共通化できる (1関数に集約)。LABEL_MAX_CHARS=20 の切り詰めは prefix 適用前の本文だけに掛ける (prefix が要約を食わないように)。

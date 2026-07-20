@@ -28,10 +28,11 @@ usage-limits-core (credential 読み取り・oauth/usage API・weekly_scoped パ
 
 ## 修正方針
 
-1. 共有パッケージを devDependency (タグ pin) にする
+1. 共有パッケージを devDependency (immutable な commit SHA または digest pin) にする
 2. 決定的な生成スクリプトを追加し、package から単一ファイルの `limits-fetch.mjs` を
    生成して**コミットする** (生成物は diff レビュー可能なまま保つ)
-3. CI で「生成物が package バージョンと同期しているか」を検証する
+3. CI で「生成物が pinned revision と同期しているか」を検証し、指定 revision から
+   再生成した `limits-fetch.mjs` とコミット済み生成物が一致することを確認する
 4. TASK-5 (payload 拡張で fetcher 廃止) はそのまま維持。廃止条件が来たら本リポだけ
    fetcher と生成工程を落とし、package は tmux/herdr 用に存続する
 

@@ -35,7 +35,7 @@ dotfiles の setup スクリプトを前提とする install 手順も 0 件。c
 
 ## 最終検証 (上記解消タスク完了後)
 
-1. 4 リポで `grep -rniE 'dotfiles' --exclude-dir=backlog` → 記録文書 (CHANGELOG・docs/specs) 以外 0 hit
+1. 4 リポで `grep -rniE 'dotfiles' . --exclude-dir=backlog --exclude=CHANGELOG.md | grep -v '^./docs/specs/'` → 0 hit
 2. sync-core.sh が存在しない・パッケージ参照のみが唯一のリポ間依存であることを確認
 3. TASK-9 AC#5 (dotfiles リポ無しでの live 動作確認) と併せてクローズ
 <!-- SECTION:DESCRIPTION:END -->
