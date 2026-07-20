@@ -56,7 +56,7 @@ and configures Claude Code with:
 
 Core mode is the default. It reads only the JSON Claude Code passes to the statusline command on stdin, writes one statusline to stdout, and does not read credentials or perform network access.
 
-Extended mode adds model-scoped weekly limits from Anthropic's OAuth usage endpoint. It is enabled only when `limits-fetch.mjs` is copied next to the stable `statusline.mjs` under `$HOME/.claude/statusline-limits/`.
+Extended mode adds model-scoped weekly limits from Anthropic's OAuth usage endpoint. It is enabled only when `limits-fetch.mjs` and the `.extended-approved` marker are copied next to the stable `statusline.mjs` under `$HOME/.claude/statusline-limits/`.
 
 Extended `limits-fetch.mjs` is not auto-synced by the hook because it reads credentials. To update Extended mode, rerun `/statusline-limits:install`, review the disclosure, and approve copying the new fetcher.
 
@@ -94,7 +94,7 @@ In Extended mode, `limits-fetch.mjs` refreshes cached usage data in `$HOME/.clau
 - If no statusline appears, confirm Claude Code's `statusLine.command` points to `$HOME/.claude/statusline-limits/statusline.mjs`.
 - If Extended mode data is missing, rerun `/statusline-limits:install` and approve copying `limits-fetch.mjs`.
 - If output looks stale, remove `$HOME/.claude/statusline-limits/cache.json` and wait for the next refresh.
-- If `$HOME/.claude/statusline-limits/limits-fetch.mjs` exists but you never approved Extended mode through `/statusline-limits:install` (an older SessionStart hook deployed it unconditionally before this fix), remove it manually: `rm $HOME/.claude/statusline-limits/limits-fetch.mjs $HOME/.claude/statusline-limits/cache.json`. Extended mode is detected only by that file's presence, so deleting it reverts to Core mode without a full uninstall.
+- After this update, an older unapproved `$HOME/.claude/statusline-limits/limits-fetch.mjs` does not run unless `$HOME/.claude/statusline-limits/.extended-approved` also exists. To keep using Extended mode, rerun `/statusline-limits:install` and approve copying the fetcher; to clean up old Extended files manually, remove `$HOME/.claude/statusline-limits/limits-fetch.mjs` and `$HOME/.claude/statusline-limits/cache.json`.
 
 ## Development
 

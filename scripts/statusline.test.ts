@@ -140,6 +140,7 @@ describe("statusline.mjs", () => {
     const dir = join(tmpdir(), `statusline-poison-fetch-${process.pid}-${Date.now()}`);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, "limits-fetch.mjs"), "");
+    await writeFile(join(dir, ".extended-approved"), "");
     const cacheFile = join(dir, "cache.json");
     let spawned = 0;
     try {
@@ -185,10 +186,32 @@ describe("statusline.mjs", () => {
     expect(spawned).toBe(0);
   });
 
-  test("fetcher が存在し取得間隔を過ぎていれば spawn する", async () => {
+  test("fetcher が存在しても同意マーカーが無ければ spawn しない", async () => {
     const dir = join(tmpdir(), `statusline-limits-${process.pid}-${Date.now()}`);
     await mkdir(dir, { recursive: true });
     await writeFile(join(dir, "limits-fetch.mjs"), "");
+    let spawned = 0;
+    try {
+      const didSpawn = maybeSpawnLimitsFetch({
+        scriptDir: dir,
+        cacheFile: join(dir, "missing-cache.json"),
+        spawnImpl: () => {
+          spawned += 1;
+          return { unref() {} };
+        },
+      });
+      expect(didSpawn).toBe(false);
+      expect(spawned).toBe(0);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fetcher と同意マーカーが存在し取得間隔を過ぎていれば spawn する", async () => {
+    const dir = join(tmpdir(), `statusline-limits-approved-${process.pid}-${Date.now()}`);
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "limits-fetch.mjs"), "");
+    await writeFile(join(dir, ".extended-approved"), "");
     let spawned = 0;
     try {
       const didSpawn = maybeSpawnLimitsFetch({

@@ -33,7 +33,7 @@ Extended mode is enabled only when `$HOME/.claude/statusline-limits/limits-fetch
 - **The endpoint and beta header are undocumented and may change or fail without notice.**
 - The fetcher is not auto-synced by the SessionStart hook; rerun this install skill to update it after reviewing the new file.
 
-Copy the fetcher only after the user explicitly approves Extended mode. Do not add a global environment flag.
+Copy the fetcher only after the user explicitly approves Extended mode. When copying the fetcher, also create `$HOME/.claude/statusline-limits/.extended-approved` in the same destination directory. Do not add a global environment flag.
 
 ## Verification
 

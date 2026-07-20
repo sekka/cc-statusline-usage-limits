@@ -307,9 +307,12 @@ export function maybeSpawnLimitsFetch({
   statImpl = statSync,
 } = {}) {
   const fetcherPath = join(scriptDir, "limits-fetch.mjs");
+  const approvalPath = join(scriptDir, ".extended-approved");
   try {
     const stat = statImpl(fetcherPath);
     if (!stat.isFile()) return false;
+    const approvalStat = statImpl(approvalPath);
+    if (!approvalStat.isFile()) return false;
   } catch {
     return false;
   }
