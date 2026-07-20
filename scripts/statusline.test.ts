@@ -121,6 +121,23 @@ describe("statusline.mjs", () => {
     ).toBe("Sonnet 4.5");
   });
 
+  test("未来 timestamp の stale age suffix は 0m ago に丸める", () => {
+    expect(
+      renderStatusline(
+        { model: { display_name: "Sonnet 4.5" } },
+        {
+          cache: {
+            data: extendedCache.data,
+            stale: true,
+            timestamp: 2000000000000 + 60 * 60 * 1000,
+          },
+          color: false,
+          now: 2000000000000,
+        },
+      ),
+    ).toContain("(0m ago)");
+  });
+
   test("未来の timestamp を持つ cache は stale 扱いにする", async () => {
     const dir = join(tmpdir(), `statusline-poison-${process.pid}-${Date.now()}`);
     await mkdir(dir, { recursive: true });

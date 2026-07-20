@@ -276,13 +276,11 @@ export function renderStatusline(input, options = {}) {
         renderOptions.now - options.cache.timestamp > CACHE_MAX_AGE_MS)) &&
     typeof options.cache?.timestamp === "number"
   ) {
-    parts.push(
-      color(
-        `(${Math.floor((renderOptions.now - options.cache.timestamp) / 60000)}m ago)`,
-        "gray",
-        renderOptions,
-      ),
+    const ageMinutes = Math.max(
+      0,
+      Math.floor((renderOptions.now - options.cache.timestamp) / 60000),
     );
+    parts.push(color(`(${ageMinutes}m ago)`, "gray", renderOptions));
   }
   return parts.join(" ");
 }
