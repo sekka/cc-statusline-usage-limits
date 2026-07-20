@@ -1,6 +1,6 @@
 {
   "name": "statusline-limits",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "Statusline rate-limit gauges for Claude Code.",
   "author": {
     "name": "sekka"
