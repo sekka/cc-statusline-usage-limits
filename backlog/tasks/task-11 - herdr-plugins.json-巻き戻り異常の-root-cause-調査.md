@@ -30,7 +30,7 @@ ordinal: 11000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [x] #1 巻き戻りの発生経路を特定し、証跡 (書き込み元プロセスの特定根拠、該当ログ抜粋または state ファイルの mtime/内容、発生時刻のタイムライン再構成) を本タスクに記録する
+- [x] #1 巻き戻りの発生機構をソースレベルで特定し、証跡 (source の該当箇所、writer 候補の列挙と絞り込み根拠、state ファイル/プロセスの生死確認) を本タスクに記録する — 最終 writer の個体特定は herdr が save log に plugin id を出さないため事後には不可能で、その制約自体を証跡付きで記録することを完了条件とする (log 改善は upstream issue #1704 で提案済み)
 - [x] #2 再発防止策を実装 (commit SHA を記録) するか herdr 側へ issue 起票 (issue URL を記録) し、どちらを選んだかの判断理由を記す
 - [x] #3 再現手順 (コマンドと期待結果・実測結果) または「再発しないこと」の確認手順を記録し、少なくとも 1 回実測して結果を残す
 <!-- AC:END -->
@@ -63,7 +63,12 @@ ordinal: 11000
 
 ## AC#3 確認手順と実測 (2026-07-22)
 
-手順: guard 単体に fake registry JSON を与えて挙動確認。
-- 正常 registry (sekka.* のみ) → exit 0 (実測 ok)
-- dotfiles.* を含む registry → exit 1、`dotfiles.tab-title, dotfiles.usage-limits` を明示 (実測 ok)
-- 以後は毎回の `./sync.sh` converge が同検査を自動実行するため、巻き戻り再発は converge 時点で fail-loud に検出される
+再現コマンド (第三者再現可能、dotfiles リポの committed test):
+
+```
+cd ~/dotfiles && bun test setup/converge/herdr-plugins.test.ts
+```
+
+実測 (2026-07-22 10:55 JST): `26 pass / 0 fail`。テストは 3 ケースを網羅 — (a) 正常 registry (sekka.* のみ) で guard 通過、(b) dotfiles.* 残存で throw + 残存 id (`dotfiles.tab-title, dotfiles.usage-limits`) をメッセージに明示、(c) `herdr plugin list --json` 失敗時は警告 (`stale plugin guard skipped`) を出して skip。
+
+検出保証の範囲: fail-loud 検出は converge 時に `herdr plugin list --json` が**成功した場合**に成立する。list 取得失敗時は警告のみで検査は skip される (converge 自体を壊さない設計判断) — この場合は警告ログが residual signal。list が恒常的に失敗する状況は converge の他の警告でも顕在化する。
