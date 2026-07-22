@@ -228,13 +228,26 @@ async function fetchAndCacheLimits({
   const existing = await readExisting(cacheFile, readFileImpl);
   const tempCoreCache = coreCacheFile(cacheFile);
   let status;
+  let failureError = "usage fetch failed";
   try {
     await seedCoreCache(tempCoreCache, existing);
     const token = await tokenProvider();
+    if (!token) {
+      failureError = "missing Claude credential";
+      await writeCacheRecordImpl(failureRecord(existing, now), cacheFile);
+      return { ok: false, error: failureError };
+    }
     const fetchWithStatus = async (input, init) => {
-      const response = await fetchImpl(input, init);
-      status = response.status;
-      return response;
+      try {
+        const response = await fetchImpl(input, init);
+        status = response.status;
+        if (!response.ok)
+          failureError = `usage API returned HTTP ${response.status}`;
+        return response;
+      } catch (error) {
+        failureError = error instanceof Error ? error.message : String(error);
+        throw error;
+      }
     };
     const warn = console.warn;
     console.warn = () => {};
@@ -260,7 +273,7 @@ async function fetchAndCacheLimits({
       return { ok: true, status };
     }
     await writeCacheRecordImpl(failureRecord(existing, now), cacheFile);
-    return { ok: false, error: "usage fetch failed" };
+    return { ok: false, error: failureError };
   } finally {
     await rm(tempCoreCache, { force: true });
   }

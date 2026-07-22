@@ -117,4 +117,60 @@ describe("limits-fetch.mjs", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("token が無い場合は fetch せず旧実装と同じ error を返す", async () => {
+    const dir = join(tmpdir(), `limits-fetch-missing-token-${process.pid}-${Date.now()}`);
+    const file = join(dir, "cache.json");
+    try {
+      await mkdir(dir, { recursive: true });
+      const result = await fetchAndCacheLimits({
+        cacheFile: file,
+        now: 300,
+        tokenProvider: async () => null,
+        fetchImpl: async () => {
+          throw new Error("fetch should not be called");
+        },
+      });
+      expect(result).toEqual({ ok: false, error: "missing Claude credential" });
+      expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ lastAttempt: 300 });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("HTTP 失敗時は旧実装と同じ status 付き error を返す", async () => {
+    const dir = join(tmpdir(), `limits-fetch-http-fail-${process.pid}-${Date.now()}`);
+    const file = join(dir, "cache.json");
+    try {
+      await mkdir(dir, { recursive: true });
+      const result = await fetchAndCacheLimits({
+        cacheFile: file,
+        now: 400,
+        tokenProvider: async () => "token",
+        fetchImpl: async () => ({ ok: false, status: 503 }),
+      });
+      expect(result).toEqual({ ok: false, error: "usage API returned HTTP 503" });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fetch 例外時は旧実装と同じ例外 message を返す", async () => {
+    const dir = join(tmpdir(), `limits-fetch-network-fail-${process.pid}-${Date.now()}`);
+    const file = join(dir, "cache.json");
+    try {
+      await mkdir(dir, { recursive: true });
+      const result = await fetchAndCacheLimits({
+        cacheFile: file,
+        now: 500,
+        tokenProvider: async () => "token",
+        fetchImpl: async () => {
+          throw new Error("network down");
+        },
+      });
+      expect(result).toEqual({ ok: false, error: "network down" });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
