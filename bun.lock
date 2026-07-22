@@ -6,6 +6,7 @@
       "name": "cc-statusline-usage-limits",
       "devDependencies": {
         "bun-types": "^1.3.5",
+        "usage-limits-core": "github:sekka/usage-limits-core#b265d98",
       },
     },
   },
@@ -15,5 +16,7 @@
     "bun-types": ["bun-types@1.3.14", "", { "dependencies": { "@types/node": "*" } }, "sha512-4N0ig0fEomHt5R0KCFWjovxow98rIoRwKolrYdCcknNwMekCXRnWEUvgu5soYV8QXtVsrUD8B95MBOZGPvr6KQ=="],
 
     "undici-types": ["undici-types@8.3.0", "", {}, "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ=="],
+
+    "usage-limits-core": ["usage-limits-core@github:sekka/usage-limits-core#b265d98", {}, "sekka-usage-limits-core-b265d98", "sha512-c22tygJNFOy00aAFzmy0wbuVn5dsjumXdFYmo06mtVpW9Ec+z9h3ZkX13NEdYdq88hSOKQbcexFe6KOF/ZTxeA=="],
   }
 }

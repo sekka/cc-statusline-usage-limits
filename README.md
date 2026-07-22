@@ -104,6 +104,13 @@ Run tests:
 bun test scripts/*.test.ts
 ```
 
+Regenerate and verify the Extended mode fetcher:
+
+```sh
+bun run generate:limits-fetch
+bun run check:limits-fetch
+```
+
 Validate plugin manifests:
 
 ```sh
