@@ -1,10 +1,10 @@
 ---
 id: TASK-8
 title: herdrペインID表示をherdr-tab-titleプラグインへ統合する
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-13 09:24'
-updated_date: '2026-07-20 10:30'
+updated_date: '2026-07-22 01:17'
 labels:
   - feature
   - setup
@@ -51,9 +51,9 @@ ordinal: 8000
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 タブラベルが「pD9: claude ✳タイトル」形式で表示される (herdr-tab-title が担当)
-- [ ] #2 分割時のペインラベルが「pD9: claude」形式で表示される (同プラグインが担当)
-- [ ] #3 旧 [pXX] 形式のラベルが残っていても二重 prefix にならない
-- [ ] #4 手動リネームしたタブ・ペインは上書きされない
-- [ ] #5 dotfiles 側の herdr-label-sync (スクリプト・テスト・nix launchd 登録) が削除され、デーモンが停止している
+- [x] #1 タブラベルが「pD9: claude ✳タイトル」形式で表示される (herdr-tab-title が担当)
+- [x] #2 分割時のペインラベルが「pD9: claude」形式で表示される (同プラグインが担当)
+- [x] #3 旧 [pXX] 形式のラベルが残っていても二重 prefix にならない
+- [x] #4 手動リネームしたタブ・ペインは上書きされない
+- [x] #5 dotfiles 側の herdr-label-sync (スクリプト・テスト・nix launchd 登録) が削除され、デーモンが停止している
 <!-- AC:END -->

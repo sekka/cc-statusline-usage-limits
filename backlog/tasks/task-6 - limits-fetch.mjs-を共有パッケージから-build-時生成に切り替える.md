@@ -1,9 +1,10 @@
 ---
 id: TASK-6
 title: limits-fetch.mjs を共有パッケージから build 時生成に切り替える
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-20 10:00'
+updated_date: '2026-07-22 00:27'
 labels:
   - refactor
 dependencies: []
@@ -43,8 +44,8 @@ usage-limits-core (credential 読み取り・oauth/usage API・weekly_scoped パ
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 limits-fetch.mjs が生成スクリプト経由で共有パッケージから決定的に生成され、コミットされている
-- [ ] #2 生成物が自己完結の単一ファイルのままで、sync.sh の配備モデルと install skill のレビューゲートが変わっていない
-- [ ] #3 CI が生成物と package バージョンの同期を検証している
-- [ ] #4 bun test が全パスしている
+- [x] #1 limits-fetch.mjs が生成スクリプト経由で共有パッケージから決定的に生成され、コミットされている
+- [x] #2 生成物が自己完結の単一ファイルのままで、sync.sh の配備モデルと install skill のレビューゲートが変わっていない
+- [x] #3 CI が生成物と package バージョンの同期を検証している
+- [x] #4 bun test が全パスしている
 <!-- AC:END -->
