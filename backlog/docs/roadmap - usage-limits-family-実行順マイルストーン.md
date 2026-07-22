@@ -51,6 +51,14 @@ M1 の修正済み core を引き継ぐ (依存: M1 完了)。
 - cc TASK-5 — statusline payload にモデル別リミットが載ったら fetcher 廃止 (定期チェック、
   廃止判断は 3 リポ + パッケージに波及)
 
+## 運用ルール: backlog status の同期 (2026-07-20 追加)
+
+status 更新を記憶頼みにしない。実装を委任する dispatch brief には必ず「完了時に実行する
+backlog コマンド」セクション (`backlog task edit <id> -s <status> --check-ac <n>` の具体
+コマンド、**実行リポの cd 付き**) を含め、作業と status 更新を不可分にする。委任しない
+ステップ (merge・リリース) は、その操作の直後に同 turn で status を更新する。タスクの
+所属リポを取り違えないこと (TASK-n は各リポに別々に存在する)。
+
 ## 依存関係の要点
 
 - M3 は M1 に依存 (パッケージは修正済み core を切り出す)

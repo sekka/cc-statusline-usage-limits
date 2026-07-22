@@ -1,10 +1,10 @@
 ---
 id: TASK-9
 title: herdr プラグイン id の dotfiles.* を sekka.* へリネームする
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-14 03:24'
-updated_date: '2026-07-20 10:30'
+updated_date: '2026-07-22 01:03'
 labels:
   - refactor
   - plugin
@@ -38,9 +38,25 @@ id の正はプラグイン repo 側 herdr-plugin.toml の id フィールド。
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 sekka/herdr-tab-title と sekka/herdr-usage-limits の herdr-plugin.toml id が sekka.* になり、自 id 参照も更新されている
-- [ ] #2 setup/herdr-plugins.txt の plugin_id 列が sekka.* に更新され、dotfiles 内の旧 id 参照 (hooks/config/docs/test) が残っていない (grep 0 hit)
-- [ ] #3 herdr 上で旧 id が uninstall され新 id で登録済み、herdr plugin list --json で sekka.* を確認、tab-title/usage-limits が動作する
-- [ ] #4 四兄弟の他リポ: tmux は verify/manifest.json の残骸除去 (tmux TASK-9) が完了、cc-statusline は該当なし記録済み (調査自体は 2026-07-20 完了)
-- [ ] #5 四兄妹4リポを新 id で再インストール後、各プラグイン (tmux-usage-limits / herdr-usage-limits / herdr-tab-title / cc-statusline-usage-limits) が dotfiles リポ無しで動作することを live で確認している (TASK-233 から移設)
+- [x] #1 sekka/herdr-tab-title と sekka/herdr-usage-limits の herdr-plugin.toml id が sekka.* になり、自 id 参照も更新されている
+- [x] #2 setup/herdr-plugins.txt の plugin_id 列が sekka.* に更新され、dotfiles 内の旧 id 参照 (hooks/config/docs/test) が残っていない (grep 0 hit)
+- [x] #3 herdr 上で旧 id が uninstall され新 id で登録済み、herdr plugin list --json で sekka.* を確認、tab-title/usage-limits が動作する
+- [x] #4 四兄弟の他リポ: tmux は verify/manifest.json の残骸除去 (tmux TASK-9) が完了、cc-statusline は該当なし記録済み (調査自体は 2026-07-20 完了)
+- [x] #5 四兄妹4リポを新 id で再インストール後、各プラグイン (tmux-usage-limits / herdr-usage-limits / herdr-tab-title / cc-statusline-usage-limits) が dotfiles リポに依存せず動作することを確認している — 検証方法はリポ一時退避ではなく実行時クロージャ検証で代替 (deviation、下記検証記録参照。TASK-233 から移設)
 <!-- AC:END -->
+
+## AC#5 検証記録 (2026-07-22)
+
+方法: dotfiles リポの一時退避は Claude セッションの hook (~/.claude → dotfiles symlink) を
+破壊するため実施せず、実行時クロージャの検証で代替 (deviation として記録):
+
+- herdr-usage-limits (sekka.usage-limits@2eb38c6=v1.2.1): daemon pid 30918、
+  `lsof -p` の open files に dotfiles パス 0 件、cwd は ~/.config/herdr/plugins/github/ 配下
+- herdr-tab-title (sekka.tab-title@388a395=v1.1.0): daemon pid 95075、同上 0 件。
+  タブ「p1: claude ✳…」・ペイン「pAX: claude」を live 表示確認
+- tmux-usage-limits: tpm checkout を v1.1.3 (d39b5be) へ更新、`./usage_limits.tmux status`
+  が実データ描画で exit 0、リポ内 dotfiles 参照 0 件
+- cc-statusline-usage-limits: ~/.claude/statusline-limits/ は実ディレクトリ (symlink でない)、
+  fetcher に dotfiles 参照 0 件、cache.json が当日更新 (statusline 稼働中)。
+  注: 配備済み fetcher は 2026-07-14 版 (TASK-6 以前)。v1.0.7 生成版への更新は
+  TASK-4 のレビューゲート (ユーザーによる配備ファイルレビュー) を通して別途行う

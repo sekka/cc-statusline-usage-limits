@@ -1,9 +1,10 @@
 ---
 id: TASK-7
 title: 毒 cache 脆弱性修正 (未来 timestamp で表示凍結) をコミット・リリースする
-status: In Progress
+status: Done
 assignee: []
 created_date: '2026-07-20 10:25'
+updated_date: '2026-07-20 14:16'
 labels:
   - fix
   - security
@@ -53,6 +54,6 @@ PR #10 作成済みで、CI test は pass。リリースは未実施 (release-pl
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 修正がブランチ経由でコミットされ、PR の CI がパスして master にマージされている
-- [ ] #2 release-please のリリースが切られている
+- [x] #1 修正がブランチ経由でコミットされ、PR の CI がパスして master にマージされている
+- [x] #2 release-please のリリースが切られている
 <!-- AC:END -->

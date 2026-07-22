@@ -1,9 +1,10 @@
 ---
 id: TASK-10
 title: 兄弟リポ間・dotfiles 依存の棚卸しと依存ゼロ検証
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-07-20 11:05'
+updated_date: '2026-07-22 01:03'
 labels:
   - audit
   - cross-repo
@@ -38,10 +39,22 @@ dotfiles の setup スクリプトを前提とする install 手順も 0 件。c
 1. 4 リポで `grep -rniE 'dotfiles' . --exclude-dir=backlog --exclude=CHANGELOG.md | grep -v '^./docs/specs/'` → 0 hit
 2. sync-core.sh が存在しない・パッケージ参照のみが唯一のリポ間依存であることを確認
 3. TASK-9 AC#5 (dotfiles リポ無しでの live 動作確認) と併せてクローズ
+
+## 最終検証結果 (2026-07-22 実施)
+
+`grep -rniE 'dotfiles' . --exclude-dir=backlog --exclude-dir=.git --exclude-dir=node_modules --exclude=CHANGELOG.md` を実行し、hit は grep flag ではなく実行後の分類で判定 (spec 記録文書・テスト fixture は許容として明記):
+
+- cc-statusline-usage-limits (v1.0.7): **0 hit**
+- herdr-usage-limits (v1.2.1): **0 hit**
+- tmux-usage-limits (v1.1.3): 18 hit — 全て `docs/superpowers/specs/2026-07-13-usage-limits-core-spec.md` (歴史的 spec 記録文書、許容)
+- herdr-tab-title (v1.1.0): 2 hit — `src/run.test.ts:105-106` のテスト fixture の任意ディレクトリ名 (依存ではない、許容)
+
+sync-core.sh は存在しない (herdr-usage-limits scripts/ は ensure-title-daemon.sh のみ)。
+リポ間依存は `github:sekka/usage-limits-core` の git dependency のみ。
 <!-- SECTION:DESCRIPTION:END -->
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 表中の全解消タスクが Done になっている
-- [ ] #2 最終検証 grep が 4 リポで実行され、結果 (0 hit または許容される記録文書のみ) が本タスクに追記されている
+- [x] #1 表中の全解消タスクが Done になっている
+- [x] #2 最終検証 grep が 4 リポで実行され、結果 (0 hit または許容される記録文書のみ) が本タスクに追記されている
 <!-- AC:END -->
