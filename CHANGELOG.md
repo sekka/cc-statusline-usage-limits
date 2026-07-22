@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.7](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.6...v1.0.7) (2026-07-22)
+
+
+### Bug Fixes
+
+* limits-fetch の失敗理由を旧実装に揃える ([e71ca47](https://github.com/sekka/cc-statusline-usage-limits/commit/e71ca47d84c258f95899146da28a63f91ae8ff9e))
+
 ## [1.0.6](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.5...v1.0.6) (2026-07-20)
 
 
