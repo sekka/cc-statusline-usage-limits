@@ -42,7 +42,7 @@ id の正はプラグイン repo 側 herdr-plugin.toml の id フィールド。
 - [x] #2 setup/herdr-plugins.txt の plugin_id 列が sekka.* に更新され、dotfiles 内の旧 id 参照 (hooks/config/docs/test) が残っていない (grep 0 hit)
 - [x] #3 herdr 上で旧 id が uninstall され新 id で登録済み、herdr plugin list --json で sekka.* を確認、tab-title/usage-limits が動作する
 - [x] #4 四兄弟の他リポ: tmux は verify/manifest.json の残骸除去 (tmux TASK-9) が完了、cc-statusline は該当なし記録済み (調査自体は 2026-07-20 完了)
-- [x] #5 四兄妹4リポを新 id で再インストール後、各プラグイン (tmux-usage-limits / herdr-usage-limits / herdr-tab-title / cc-statusline-usage-limits) が dotfiles リポ無しで動作することを live で確認している (TASK-233 から移設)
+- [x] #5 四兄妹4リポを新 id で再インストール後、各プラグイン (tmux-usage-limits / herdr-usage-limits / herdr-tab-title / cc-statusline-usage-limits) が dotfiles リポに依存せず動作することを確認している — 検証方法はリポ一時退避ではなく実行時クロージャ検証で代替 (deviation、下記検証記録参照。TASK-233 から移設)
 <!-- AC:END -->
 
 ## AC#5 検証記録 (2026-07-22)

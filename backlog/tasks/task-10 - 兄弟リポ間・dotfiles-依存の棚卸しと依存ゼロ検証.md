@@ -42,7 +42,7 @@ dotfiles の setup スクリプトを前提とする install 手順も 0 件。c
 
 ## 最終検証結果 (2026-07-22 実施)
 
-`grep -rniE 'dotfiles' . --exclude-dir=backlog --exclude-dir=.git --exclude-dir=node_modules --exclude=CHANGELOG.md` (docs/specs 系除外):
+`grep -rniE 'dotfiles' . --exclude-dir=backlog --exclude-dir=.git --exclude-dir=node_modules --exclude=CHANGELOG.md` を実行し、hit は grep flag ではなく実行後の分類で判定 (spec 記録文書・テスト fixture は許容として明記):
 
 - cc-statusline-usage-limits (v1.0.7): **0 hit**
 - herdr-usage-limits (v1.2.1): **0 hit**
