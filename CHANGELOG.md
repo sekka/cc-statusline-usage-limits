@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.8](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.7...v1.0.8) (2026-07-22)
+
+
+### Bug Fixes
+
+* Extended 再承認の案内を statusline に表示 ([1832607](https://github.com/sekka/cc-statusline-usage-limits/commit/1832607dfc52ec0d53451bc5f24d7301f92eff49))
+
 ## [1.0.7](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.6...v1.0.7) (2026-07-22)
 
 
