@@ -176,16 +176,9 @@ async function getToken({
   } catch {}
   return tokenFromKeychain(execFileImpl);
 }
-async function readExisting(cacheFile, readFileImpl) {
+async function readJsonFile(cacheFile, readFileImpl = readFile2) {
   try {
     return JSON.parse(await readFileImpl(cacheFile, "utf8"));
-  } catch {
-    return null;
-  }
-}
-async function readCoreRecord(cacheFile) {
-  try {
-    return JSON.parse(await readFile2(cacheFile, "utf8"));
   } catch {
     return null;
   }
@@ -225,7 +218,7 @@ async function fetchAndCacheLimits({
   tokenProvider = getToken,
   writeCacheRecordImpl = writeCacheRecord2
 } = {}) {
-  const existing = await readExisting(cacheFile, readFileImpl);
+  const existing = await readJsonFile(cacheFile, readFileImpl);
   const tempCoreCache = coreCacheFile(cacheFile);
   let status;
   let failureError = "usage fetch failed";
@@ -267,7 +260,7 @@ async function fetchAndCacheLimits({
     } finally {
       console.warn = warn;
     }
-    const coreRecord = await readCoreRecord(tempCoreCache);
+    const coreRecord = await readJsonFile(tempCoreCache);
     if (coreRecord?.timestamp === now && coreRecord?.nextRetryAt === null && coreRecord?.data) {
       await writeCacheRecordImpl(successRecord(coreRecord.data, now), cacheFile);
       return { ok: true, status };
