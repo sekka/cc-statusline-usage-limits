@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
@@ -45,7 +45,72 @@ const extendedCache = {
   stale: false,
 };
 
+async function runStatusline(scriptPath: string, home: string) {
+  const proc = Bun.spawn({
+    cmd: [process.execPath, scriptPath],
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, HOME: home, NO_COLOR: "1" },
+  });
+  proc.stdin.write(JSON.stringify({ model: { display_name: "Sonnet 4.5" } }));
+  proc.stdin.end();
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+  return { stdout, stderr, code };
+}
+
 describe("statusline.mjs", () => {
+  test("CLI は fetcher が存在し同意マーカーが無ければ再承認を案内し marker を作らない", async () => {
+    const dir = join(tmpdir(), `statusline-cli-reapproval-${process.pid}-${Date.now()}`);
+    const runtimeDir = join(dir, "runtime");
+    const home = join(dir, "home");
+    await mkdir(runtimeDir, { recursive: true });
+    await mkdir(home, { recursive: true });
+    await copyFile(
+      join(process.cwd(), "scripts", "statusline.mjs"),
+      join(runtimeDir, "statusline.mjs"),
+    );
+    await writeFile(join(runtimeDir, "limits-fetch.mjs"), "");
+
+    try {
+      const result = await runStatusline(join(runtimeDir, "statusline.mjs"), home);
+      expect(result).toEqual({
+        stdout: "Sonnet 4.5 Extended 要再承認 → /statusline-limits:install\n",
+        stderr: "",
+        code: 0,
+      });
+      await expect(access(join(runtimeDir, ".extended-approved"))).rejects.toThrow();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("CLI は fetcher が無ければ従来と byte-identical な出力を返す", async () => {
+    const dir = join(tmpdir(), `statusline-cli-core-${process.pid}-${Date.now()}`);
+    const runtimeDir = join(dir, "runtime");
+    const home = join(dir, "home");
+    await mkdir(runtimeDir, { recursive: true });
+    await mkdir(home, { recursive: true });
+    await copyFile(
+      join(process.cwd(), "scripts", "statusline.mjs"),
+      join(runtimeDir, "statusline.mjs"),
+    );
+
+    try {
+      expect(await runStatusline(join(runtimeDir, "statusline.mjs"), home)).toEqual({
+        stdout: "Sonnet 4.5\n",
+        stderr: "",
+        code: 0,
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("fetcher が存在し同意マーカーが無ければ Extended 再承認が必要", () => {
     const paths: string[] = [];
     const required = needsExtendedReapproval({
