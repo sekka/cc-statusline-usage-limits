@@ -269,6 +269,9 @@ export function renderStatusline(input, options = {}) {
     ? cacheItems
     : [coreRateLimit(input, "five_hour"), coreRateLimit(input, "seven_day")].filter(Boolean);
   for (const item of limits) parts.push(renderLimit(item, renderOptions));
+  if (options.extendedReapprovalRequired) {
+    parts.push(color("Extended 要再承認 → /statusline-limits:install", "yellow", renderOptions));
+  }
   if (
     cacheItems.length > 0 &&
     (options.cache?.stale ||
@@ -283,6 +286,24 @@ export function renderStatusline(input, options = {}) {
     parts.push(color(`(${ageMinutes}m ago)`, "gray", renderOptions));
   }
   return parts.join(" ");
+}
+
+export function needsExtendedReapproval({
+  scriptDir = dirname(fileURLToPath(import.meta.url)),
+  statImpl = statSync,
+} = {}) {
+  const fetcherPath = join(scriptDir, "limits-fetch.mjs");
+  const approvalPath = join(scriptDir, ".extended-approved");
+  try {
+    if (!statImpl(fetcherPath).isFile()) return false;
+  } catch {
+    return false;
+  }
+  try {
+    return !statImpl(approvalPath).isFile();
+  } catch {
+    return true;
+  }
 }
 
 function shouldFetch(cacheFile, now = Date.now()) {
@@ -331,7 +352,8 @@ export async function main() {
   maybeSpawnLimitsFetch();
   const input = parseInput(stdin);
   const cache = readCache();
-  process.stdout.write(`${renderStatusline(input, { cache })}\n`);
+  const extendedReapprovalRequired = needsExtendedReapproval();
+  process.stdout.write(`${renderStatusline(input, { cache, extendedReapprovalRequired })}\n`);
 }
 
 if (

@@ -2,7 +2,13 @@ import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
-import { maybeSpawnLimitsFetch, parseInput, readCache, renderStatusline } from "./statusline.mjs";
+import {
+  maybeSpawnLimitsFetch,
+  needsExtendedReapproval,
+  parseInput,
+  readCache,
+  renderStatusline,
+} from "./statusline.mjs";
 
 const fixture = {
   model: { display_name: "Sonnet 4.5" },
@@ -40,6 +46,52 @@ const extendedCache = {
 };
 
 describe("statusline.mjs", () => {
+  test("fetcher が存在し同意マーカーが無ければ Extended 再承認が必要", () => {
+    const paths: string[] = [];
+    const required = needsExtendedReapproval({
+      scriptDir: "/statusline-limits",
+      statImpl: (path: string) => {
+        paths.push(path);
+        if (path.endsWith("limits-fetch.mjs")) return { isFile: () => true };
+        throw new Error("missing");
+      },
+    });
+
+    expect(required).toBe(true);
+    expect(paths).toEqual([
+      "/statusline-limits/limits-fetch.mjs",
+      "/statusline-limits/.extended-approved",
+    ]);
+  });
+
+  test("同意マーカーが存在するか fetcher が無ければ Extended 再承認は不要", () => {
+    expect(
+      needsExtendedReapproval({
+        scriptDir: "/statusline-limits",
+        statImpl: () => ({ isFile: () => true }),
+      }),
+    ).toBe(false);
+    expect(
+      needsExtendedReapproval({
+        scriptDir: "/statusline-limits",
+        statImpl: () => {
+          throw new Error("missing");
+        },
+      }),
+    ).toBe(false);
+  });
+
+  test("Extended 再承認が必要なら install コマンドを描画する", () => {
+    expect(
+      renderStatusline(fixture, {
+        cache: extendedCache,
+        color: false,
+        now: 2000000000000,
+        extendedReapprovalRequired: true,
+      }),
+    ).toContain("Extended 要再承認 → /statusline-limits:install");
+  });
+
   test("Core stdin と Extended cache から非 Fable weekly_scoped を含むゴールデンを描画する", () => {
     expect(
       renderStatusline(fixture, { cache: extendedCache, color: false, now: 2000000000000 }),
