@@ -2,6 +2,7 @@
 
 // scripts/limits-fetch.entry.ts
 import { execFile as execFile2 } from "node:child_process";
+import { readFileSync, renameSync, rmSync } from "node:fs";
 import { chmod as chmod2, mkdir as mkdir2, readFile as readFile2, rename, rm, writeFile as writeFile2 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname as dirname2, join } from "node:path";
@@ -198,14 +199,25 @@ function failureRecord(existing, failure, now = Date.now()) {
     data: existing?.data
   };
 }
-async function releaseOwnedFetchLock(lockDir, ownerToken) {
+async function releaseOwnedFetchLock(lockDir, ownerToken, ops = { readFileSync, renameSync, rmSync }) {
   if (!lockDir || !ownerToken)
     return;
+  const tombstone = `${lockDir}.release.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
   try {
-    const owner = await readFile2(join(lockDir, "owner"), "utf8");
-    if (owner !== ownerToken)
-      return;
-    await rm(lockDir, { recursive: true, force: true });
+    ops.renameSync(lockDir, tombstone);
+  } catch {
+    return;
+  }
+  let owned = false;
+  try {
+    owned = ops.readFileSync(join(tombstone, "owner"), "utf8") === ownerToken;
+  } catch {}
+  if (owned) {
+    ops.rmSync(tombstone, { recursive: true, force: true });
+    return;
+  }
+  try {
+    ops.renameSync(tombstone, lockDir);
   } catch {}
 }
 async function writeCacheRecord2(record, cacheFile = CACHE_FILE, { mkdirImpl = mkdir2, writeFileImpl = writeFile2, renameImpl = rename } = {}) {
@@ -323,6 +335,7 @@ export {
   tokenFromKeychain,
   tokenFromCredentialsJson,
   successRecord,
+  releaseOwnedFetchLock,
   main,
   getToken,
   fetchAndCacheLimits,

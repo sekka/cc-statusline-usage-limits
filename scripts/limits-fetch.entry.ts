@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFileSync, renameSync, rmSync } from "node:fs";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -89,12 +90,37 @@ export function failureRecord(existing: any, failure: FailureInfo, now = Date.no
   };
 }
 
-async function releaseOwnedFetchLock(lockDir: string | undefined, ownerToken: string | undefined) {
+type ReleaseLockOps = {
+  readFileSync: typeof readFileSync;
+  renameSync: typeof renameSync;
+  rmSync: typeof rmSync;
+};
+
+export async function releaseOwnedFetchLock(
+  lockDir: string | undefined,
+  ownerToken: string | undefined,
+  ops: ReleaseLockOps = { readFileSync, renameSync, rmSync },
+) {
   if (!lockDir || !ownerToken) return;
+  const tombstone = `${lockDir}.release.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
   try {
-    const owner = await readFile(join(lockDir, "owner"), "utf8");
-    if (owner !== ownerToken) return;
-    await rm(lockDir, { recursive: true, force: true });
+    ops.renameSync(lockDir, tombstone);
+  } catch {
+    return;
+  }
+
+  let owned = false;
+  try {
+    owned = ops.readFileSync(join(tombstone, "owner"), "utf8") === ownerToken;
+  } catch {}
+
+  if (owned) {
+    ops.rmSync(tombstone, { recursive: true, force: true });
+    return;
+  }
+
+  try {
+    ops.renameSync(tombstone, lockDir);
   } catch {}
 }
 

@@ -1,3 +1,4 @@
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -6,6 +7,7 @@ import {
   failureRecord,
   fetchAndCacheLimits,
   getToken,
+  releaseOwnedFetchLock,
   successRecord,
   tokenFromCredentialsJson,
   tokenFromKeychain,
@@ -330,6 +332,29 @@ describe("limits-fetch.mjs", () => {
       } else {
         process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN = previousToken;
       }
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("release 中に stale takeover が挟まっても新 lock を削除しない", async () => {
+    const dir = join(tmpdir(), `limits-fetch-release-race-${process.pid}-${Date.now()}`);
+    const lockDir = join(dir, ".fetch.lock");
+    try {
+      await mkdir(lockDir, { recursive: true });
+      await writeFile(join(lockDir, "owner"), "old-owner");
+
+      await releaseOwnedFetchLock(lockDir, "old-owner", {
+        renameSync(from: string, to: string) {
+          renameSync(from, to);
+          mkdirSync(lockDir);
+          writeFileSync(join(lockDir, "owner"), "new-owner");
+        },
+        readFileSync,
+        rmSync,
+      });
+
+      expect(await readFile(join(lockDir, "owner"), "utf8")).toBe("new-owner");
+    } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
