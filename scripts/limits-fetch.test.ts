@@ -236,6 +236,28 @@ describe("limits-fetch.mjs", () => {
     }
   });
 
+  test("401 HTTP 失敗時は authentication_error として記録する", async () => {
+    const dir = join(tmpdir(), `limits-fetch-auth-fail-${process.pid}-${Date.now()}`);
+    const file = join(dir, "cache.json");
+    try {
+      await mkdir(dir, { recursive: true });
+      const result = await fetchAndCacheLimits({
+        cacheFile: file,
+        now: 750,
+        tokenProvider: async () => "token",
+        fetchImpl: async () => new Response(JSON.stringify({ error: { type: "auth" } }), { status: 401 }),
+      });
+      expect(result).toEqual({ ok: false, error: "usage API returned HTTP 401" });
+      expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+        lastAttempt: 750,
+        consecutiveFailures: 1,
+        lastError: { status: 401, type: "authentication_error", at: 750 },
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("fetcher は statusline から渡された lock を終了時に解放する", async () => {
     const dir = join(tmpdir(), `limits-fetch-lock-release-${process.pid}-${Date.now()}`);
     const file = join(dir, "cache.json");

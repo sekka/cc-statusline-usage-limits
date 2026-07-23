@@ -211,6 +211,8 @@ async function writeCacheRecord2(record, cacheFile = CACHE_FILE, { mkdirImpl = m
 async function failureTypeFromResponse(response) {
   if (response.status === 429)
     return "rate_limit";
+  if (response.status === 401)
+    return "authentication_error";
   try {
     const body = await response.clone().json();
     if (body?.error?.type === "rate_limit_error" || body?.type === "rate_limit_error") {

@@ -541,4 +541,28 @@ describe("statusline.mjs", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("spawn 同期失敗時は lock を掃除して false を返す", async () => {
+    const dir = join(tmpdir(), `statusline-spawn-fail-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      expect(
+        maybeSpawnLimitsFetch({
+          scriptDir: dir,
+          cacheFile,
+          spawnImpl: () => {
+            throw new Error("spawn failed");
+          },
+        }),
+      ).toBe(false);
+      await expect(access(lockDir)).rejects.toThrow();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

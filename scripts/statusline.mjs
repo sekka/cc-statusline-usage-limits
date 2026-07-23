@@ -397,7 +397,7 @@ export function maybeSpawnLimitsFetch({
     return true;
   } catch (error) {
     lockFs.rmSync(lockDir, { recursive: true, force: true });
-    throw error;
+    return false;
   }
 }
 
