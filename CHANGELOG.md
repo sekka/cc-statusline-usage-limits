@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.0.9](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.8...v1.0.9) (2026-07-23)
+
+
+### Bug Fixes
+
+* 401 と spawn 失敗時の記録を直す ([3e4a042](https://github.com/sekka/cc-statusline-usage-limits/commit/3e4a04276e2ddb4d0dbd0346b3e17712eec962d7))
+* cleanup 失敗時も fetch 結果を保つ ([6a1f4a4](https://github.com/sekka/cc-statusline-usage-limits/commit/6a1f4a40115ec1a6843f9f694024dd3394c03f9e))
+* fetch lock の所有者確認を追加 ([f6913e6](https://github.com/sekka/cc-statusline-usage-limits/commit/f6913e6ae1801a40521e9abe90b84803b4c6af3a))
+* fetch lock 復元失敗時の掃除を追加 ([71dc0fe](https://github.com/sekka/cc-statusline-usage-limits/commit/71dc0feb2b892aa99cd7f1f6a80514a3f9edaf22))
+* fetch lock 解放を atomic にする ([1b4ac0e](https://github.com/sekka/cc-statusline-usage-limits/commit/1b4ac0e3bcf048be389047b5d160546fa0ecc592))
+* lock 解放前に owner を確認する ([392bfe4](https://github.com/sekka/cc-statusline-usage-limits/commit/392bfe4a76e61cfd1d83eb510fc65f60f03cf7b3))
+* stale lock 回収を atomic にする ([94340d7](https://github.com/sekka/cc-statusline-usage-limits/commit/94340d72100b04fbe11853cba15ce08d159b7748))
+* stale 域の lock 解放を棄権する ([f2e4453](https://github.com/sekka/cc-statusline-usage-limits/commit/f2e4453bd4419c67259afdf664aaf8bd421e6aa7))
+* statusline の fetch lock 競合を閉じる ([01af0c7](https://github.com/sekka/cc-statusline-usage-limits/commit/01af0c737fc45aa4b60529cd326b91361930693e))
+* usage API 429 時の再取得を抑制する ([2e1d2bf](https://github.com/sekka/cc-statusline-usage-limits/commit/2e1d2bf5444dcce1a4d2a39156ee8b850c224e26))
+* 一時 cache 削除失敗時も lock を解放する ([0b026a4](https://github.com/sekka/cc-statusline-usage-limits/commit/0b026a435005491f502e69436bf5fa4adf032c88))
+
 ## [1.0.8](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.7...v1.0.8) (2026-07-22)
 
 
