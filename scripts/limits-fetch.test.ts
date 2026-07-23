@@ -389,6 +389,24 @@ describe("limits-fetch.mjs", () => {
     }
   });
 
+  test("temp core cache の rm が失敗しても lock release を実行する", async () => {
+    let released = false;
+    await expect(
+      fetchAndCacheLimits({
+        cacheFile: "/tmp/statusline-release-on-rm-fail/cache.json",
+        now: 900,
+        tokenProvider: async () => null,
+        rmImpl: async () => {
+          throw new Error("rm failed");
+        },
+        releaseFetchLockImpl: async () => {
+          released = true;
+        },
+      }),
+    ).rejects.toThrow("rm failed");
+    expect(released).toBe(true);
+  });
+
   test("fetch 例外時は旧実装と同じ例外 message を返す", async () => {
     const dir = join(tmpdir(), `limits-fetch-network-fail-${process.pid}-${Date.now()}`);
     const file = join(dir, "cache.json");

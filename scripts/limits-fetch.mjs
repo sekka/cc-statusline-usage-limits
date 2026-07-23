@@ -270,7 +270,9 @@ async function fetchAndCacheLimits({
   fetchImpl = globalThis.fetch,
   readFileImpl = readFile2,
   tokenProvider = getToken,
-  writeCacheRecordImpl = writeCacheRecord2
+  writeCacheRecordImpl = writeCacheRecord2,
+  rmImpl = rm,
+  releaseFetchLockImpl = releaseOwnedFetchLock
 } = {}) {
   const existing = await readJsonFile(cacheFile, readFileImpl);
   const tempCoreCache = coreCacheFile(cacheFile);
@@ -326,8 +328,11 @@ async function fetchAndCacheLimits({
     await writeCacheRecordImpl(failureRecord(existing, { status, type: failureType }, now), cacheFile);
     return { ok: false, error: failureError };
   } finally {
-    await rm(tempCoreCache, { force: true });
-    await releaseOwnedFetchLock(process.env.STATUSLINE_LIMITS_FETCH_LOCK, process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN);
+    try {
+      await rmImpl(tempCoreCache, { force: true });
+    } finally {
+      await releaseFetchLockImpl(process.env.STATUSLINE_LIMITS_FETCH_LOCK, process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN);
+    }
   }
 }
 async function main() {
