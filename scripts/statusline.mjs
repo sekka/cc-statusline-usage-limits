@@ -26,6 +26,7 @@ const CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 const FETCH_MIN_INTERVAL_MS = 60 * 1000;
 const FETCH_RATE_LIMIT_BACKOFF_MS = [60_000, 120_000, 300_000, 600_000, 1_200_000, 1_800_000];
 const FETCH_LOCK_STALE_MS = 30 * 60 * 1000;
+const FETCH_LOCK_RELEASE_SAFETY_MARGIN_MS = 60 * 1000;
 const TOKYO_TZ = "Asia/Tokyo";
 
 export function defaultInstallDir() {
@@ -368,7 +369,25 @@ function acquireFetchLock(lockDir, ownerToken, now = Date.now(), lockFs) {
       } catch {
         return false;
       }
-      lockFs.rmSync(staleLockDir, { recursive: true, force: true });
+      try {
+        const movedStat = lockFs.statSync(staleLockDir);
+        if (!Number.isFinite(movedStat.mtimeMs) || now - movedStat.mtimeMs <= FETCH_LOCK_STALE_MS) {
+          try {
+            lockFs.renameSync(staleLockDir, lockDir);
+          } catch {}
+          return false;
+        }
+      } catch {
+        try {
+          lockFs.renameSync(staleLockDir, lockDir);
+        } catch {}
+        return false;
+      }
+      try {
+        lockFs.rmSync(staleLockDir, { recursive: true, force: true });
+      } catch {
+        return false;
+      }
       try {
         return createFetchLock(lockDir, ownerToken, lockFs);
       } catch {
@@ -379,13 +398,50 @@ function acquireFetchLock(lockDir, ownerToken, now = Date.now(), lockFs) {
   return false;
 }
 
+function releaseOwnedFetchLock(lockDir, ownerToken, lockFs) {
+  if (!lockDir || !ownerToken) return;
+  try {
+    const stat = lockFs.statSync(lockDir);
+    const age = Date.now() - stat.mtimeMs;
+    if (Number.isFinite(age) && age >= FETCH_LOCK_STALE_MS - FETCH_LOCK_RELEASE_SAFETY_MARGIN_MS) {
+      return;
+    }
+  } catch {
+    return;
+  }
+  try {
+    if (lockFs.readFileSync(join(lockDir, "owner"), "utf8") !== ownerToken) return;
+  } catch {
+    return;
+  }
+  const tombstoneDir = `${lockDir}.release.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+  try {
+    lockFs.renameSync(lockDir, tombstoneDir);
+  } catch {
+    return;
+  }
+  let ownsTombstone = false;
+  try {
+    ownsTombstone = lockFs.readFileSync(join(tombstoneDir, "owner"), "utf8") === ownerToken;
+  } catch {}
+  if (ownsTombstone) {
+    try {
+      lockFs.rmSync(tombstoneDir, { recursive: true, force: true });
+    } catch {}
+    return;
+  }
+  try {
+    lockFs.renameSync(tombstoneDir, lockDir);
+  } catch {}
+}
+
 export function maybeSpawnLimitsFetch({
   scriptDir = dirname(fileURLToPath(import.meta.url)),
   cacheFile = defaultCacheFile(),
   now = Date.now(),
   spawnImpl = spawn,
   statImpl = statSync,
-  lockFs = { mkdirSync, statSync, rmSync, renameSync, writeFileSync },
+  lockFs = { mkdirSync, readFileSync, statSync, rmSync, renameSync, writeFileSync },
 } = {}) {
   const fetcherPath = join(scriptDir, "limits-fetch.mjs");
   const approvalPath = join(scriptDir, ".extended-approved");
@@ -411,10 +467,15 @@ export function maybeSpawnLimitsFetch({
         STATUSLINE_LIMITS_FETCH_LOCK_TOKEN: lockOwnerToken,
       },
     });
+    if (child?.once) {
+      child.once("error", () => {
+        releaseOwnedFetchLock(lockDir, lockOwnerToken, lockFs);
+      });
+    }
     if (child?.unref) child.unref();
     return true;
   } catch (error) {
-    lockFs.rmSync(lockDir, { recursive: true, force: true });
+    releaseOwnedFetchLock(lockDir, lockOwnerToken, lockFs);
     return false;
   }
 }
