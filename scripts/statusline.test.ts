@@ -609,6 +609,67 @@ describe("statusline.mjs", () => {
     }
   });
 
+  test("fresh 判定後の rename back 失敗時は tombstone を掃除して spawn しない", async () => {
+    const dir = join(tmpdir(), `statusline-lock-fresh-restore-fail-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    const now = 2000000000000;
+    let spawned = 0;
+    let staleLockDir = "";
+    const removals: string[] = [];
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      const didSpawn = maybeSpawnLimitsFetch({
+        scriptDir: dir,
+        cacheFile,
+        now,
+        spawnImpl: () => {
+          spawned += 1;
+          return { unref() {} };
+        },
+        lockFs: {
+          mkdirSync(path: string) {
+            if (path === lockDir) {
+              const error = new Error("exists") as Error & { code: string };
+              error.code = "EEXIST";
+              throw error;
+            }
+          },
+          statSync(path: string) {
+            if (path === lockDir) return { mtimeMs: now - 31 * 60 * 1000 };
+            if (path === staleLockDir) return { mtimeMs: now - 1000 };
+            throw new Error(`unexpected stat ${path}`);
+          },
+          renameSync(from: string, to: string) {
+            if (from === lockDir) {
+              staleLockDir = to;
+              return;
+            }
+            if (from === staleLockDir && to === lockDir) {
+              throw new Error("canonical lock already exists");
+            }
+            throw new Error(`unexpected rename ${from} ${to}`);
+          },
+          rmSync(path: string) {
+            removals.push(path);
+          },
+          writeFileSync() {
+            throw new Error("fresh lock should not be replaced");
+          },
+        },
+      });
+
+      expect(didSpawn).toBe(false);
+      expect(spawned).toBe(0);
+      expect(removals).toEqual([staleLockDir]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("spawn 同期失敗時は lock を掃除して false を返す", async () => {
     const dir = join(tmpdir(), `statusline-spawn-fail-${process.pid}-${Date.now()}`);
     const cacheFile = join(dir, "cache.json");

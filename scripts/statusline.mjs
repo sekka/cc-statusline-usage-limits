@@ -352,6 +352,16 @@ function createFetchLock(lockDir, ownerToken, lockFs) {
   }
 }
 
+function restoreOrRemoveMovedFetchLock(fromDir, toDir, lockFs) {
+  try {
+    lockFs.renameSync(fromDir, toDir);
+  } catch {
+    try {
+      lockFs.rmSync(fromDir, { recursive: true, force: true });
+    } catch {}
+  }
+}
+
 function acquireFetchLock(lockDir, ownerToken, now = Date.now(), lockFs) {
   try {
     lockFs.mkdirSync(dirname(lockDir), { recursive: true, mode: 0o700 });
@@ -372,15 +382,11 @@ function acquireFetchLock(lockDir, ownerToken, now = Date.now(), lockFs) {
       try {
         const movedStat = lockFs.statSync(staleLockDir);
         if (!Number.isFinite(movedStat.mtimeMs) || now - movedStat.mtimeMs <= FETCH_LOCK_STALE_MS) {
-          try {
-            lockFs.renameSync(staleLockDir, lockDir);
-          } catch {}
+          restoreOrRemoveMovedFetchLock(staleLockDir, lockDir, lockFs);
           return false;
         }
       } catch {
-        try {
-          lockFs.renameSync(staleLockDir, lockDir);
-        } catch {}
+        restoreOrRemoveMovedFetchLock(staleLockDir, lockDir, lockFs);
         return false;
       }
       try {
