@@ -718,7 +718,7 @@ describe("statusline.mjs", () => {
 
       expect(didSpawn).toBe(true);
       expect(errorHandler).toBeDefined();
-      await expect(access(lockDir)).resolves.toBeNull();
+      await expect(access(lockDir)).resolves.toBeFalsy();
       errorHandler?.();
       await expect(access(lockDir)).rejects.toThrow();
     } finally {
