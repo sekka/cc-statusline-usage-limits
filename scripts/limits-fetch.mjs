@@ -2,7 +2,7 @@
 
 // scripts/limits-fetch.entry.ts
 import { execFile as execFile2 } from "node:child_process";
-import { readFileSync, renameSync, rmSync } from "node:fs";
+import { readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { chmod as chmod2, mkdir as mkdir2, readFile as readFile2, rename, rm, writeFile as writeFile2 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname as dirname2, join } from "node:path";
@@ -138,6 +138,8 @@ var execFileAsync2 = promisify2(execFile2);
 var API_URL = "https://api.anthropic.com/api/oauth/usage";
 var CACHE_FILE = join(homedir(), ".claude", "statusline-limits", "cache.json");
 var CREDENTIALS_FILE = join(homedir(), ".claude", ".credentials.json");
+var FETCH_LOCK_STALE_MS = 30 * 60 * 1000;
+var FETCH_LOCK_RELEASE_SAFETY_MARGIN_MS = 60 * 1000;
 function cacheFilePath() {
   return CACHE_FILE;
 }
@@ -199,9 +201,17 @@ function failureRecord(existing, failure, now = Date.now()) {
     data: existing?.data
   };
 }
-async function releaseOwnedFetchLock(lockDir, ownerToken, ops = { readFileSync, renameSync, rmSync }) {
+async function releaseOwnedFetchLock(lockDir, ownerToken, ops = { readFileSync, renameSync, rmSync, statSync }) {
   if (!lockDir || !ownerToken)
     return;
+  try {
+    const age = (ops.now ?? Date.now()) - ops.statSync(lockDir).mtimeMs;
+    if (Number.isFinite(age) && age >= FETCH_LOCK_STALE_MS - FETCH_LOCK_RELEASE_SAFETY_MARGIN_MS) {
+      return;
+    }
+  } catch {
+    return;
+  }
   const tombstone = `${lockDir}.release.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
   try {
     ops.renameSync(lockDir, tombstone);

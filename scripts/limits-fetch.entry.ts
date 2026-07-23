@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { readFileSync, renameSync, rmSync } from "node:fs";
+import { readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
@@ -10,6 +10,8 @@ const execFileAsync = promisify(execFile);
 const API_URL = "https://api.anthropic.com/api/oauth/usage";
 const CACHE_FILE = join(homedir(), ".claude", "statusline-limits", "cache.json");
 const CREDENTIALS_FILE = join(homedir(), ".claude", ".credentials.json");
+const FETCH_LOCK_STALE_MS = 30 * 60 * 1000;
+const FETCH_LOCK_RELEASE_SAFETY_MARGIN_MS = 60 * 1000;
 
 export function cacheFilePath() {
   return CACHE_FILE;
@@ -94,14 +96,25 @@ type ReleaseLockOps = {
   readFileSync: typeof readFileSync;
   renameSync: typeof renameSync;
   rmSync: typeof rmSync;
+  statSync: typeof statSync;
+  now?: number;
 };
 
 export async function releaseOwnedFetchLock(
   lockDir: string | undefined,
   ownerToken: string | undefined,
-  ops: ReleaseLockOps = { readFileSync, renameSync, rmSync },
+  ops: ReleaseLockOps = { readFileSync, renameSync, rmSync, statSync },
 ) {
   if (!lockDir || !ownerToken) return;
+  try {
+    const age = (ops.now ?? Date.now()) - ops.statSync(lockDir).mtimeMs;
+    if (Number.isFinite(age) && age >= FETCH_LOCK_STALE_MS - FETCH_LOCK_RELEASE_SAFETY_MARGIN_MS) {
+      return;
+    }
+  } catch {
+    return;
+  }
+
   const tombstone = `${lockDir}.release.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
   try {
     ops.renameSync(lockDir, tombstone);

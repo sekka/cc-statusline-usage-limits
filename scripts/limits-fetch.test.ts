@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -336,6 +336,35 @@ describe("limits-fetch.mjs", () => {
     }
   });
 
+  test("stale 域の release は canonical lock に触らない", async () => {
+    const dir = join(tmpdir(), `limits-fetch-release-stale-${process.pid}-${Date.now()}`);
+    const lockDir = join(dir, ".fetch.lock");
+    const now = 2000000000000;
+    let renamed = false;
+    try {
+      await mkdir(lockDir, { recursive: true });
+      await writeFile(join(lockDir, "owner"), "old-owner");
+
+      await releaseOwnedFetchLock(lockDir, "old-owner", {
+        now,
+        statSync() {
+          return { mtimeMs: now - (30 * 60 * 1000 - 60 * 1000) };
+        },
+        renameSync() {
+          renamed = true;
+          throw new Error("release should not rename stale-region lock");
+        },
+        readFileSync,
+        rmSync,
+      });
+
+      expect(renamed).toBe(false);
+      expect(await readFile(join(lockDir, "owner"), "utf8")).toBe("old-owner");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("release 中に stale takeover が挟まっても新 lock を削除しない", async () => {
     const dir = join(tmpdir(), `limits-fetch-release-race-${process.pid}-${Date.now()}`);
     const lockDir = join(dir, ".fetch.lock");
@@ -350,6 +379,7 @@ describe("limits-fetch.mjs", () => {
           writeFileSync(join(lockDir, "owner"), "new-owner");
         },
         readFileSync,
+        statSync,
         rmSync,
       });
 
