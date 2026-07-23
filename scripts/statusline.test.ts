@@ -347,17 +347,24 @@ describe("statusline.mjs", () => {
     await writeFile(join(dir, "limits-fetch.mjs"), "");
     await writeFile(join(dir, ".extended-approved"), "");
     let spawned = 0;
+    let spawnEnv: NodeJS.ProcessEnv | undefined;
     try {
       const didSpawn = maybeSpawnLimitsFetch({
         scriptDir: dir,
         cacheFile: join(dir, "missing-cache.json"),
-        spawnImpl: () => {
+        spawnImpl: (_command, _args, options) => {
           spawned += 1;
+          spawnEnv = options?.env;
           return { unref() {} };
         },
       });
       expect(didSpawn).toBe(true);
       expect(spawned).toBe(1);
+      expect(spawnEnv?.STATUSLINE_LIMITS_FETCH_LOCK).toBe(join(dir, ".fetch.lock"));
+      expect(spawnEnv?.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN).toBeTruthy();
+      expect(
+        await Bun.file(join(dir, ".fetch.lock", "owner")).text(),
+      ).toBe(spawnEnv?.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

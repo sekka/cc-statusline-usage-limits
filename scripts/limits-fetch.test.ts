@@ -1,4 +1,4 @@
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
@@ -54,10 +54,10 @@ describe("limits-fetch.mjs", () => {
       data,
     });
     expect(
-      failureRecord({ timestamp: 100, data, consecutiveFailures: 1 }, 123, {
+      failureRecord({ timestamp: 100, data, consecutiveFailures: 1 }, {
         status: 429,
         type: "rate_limit",
-      }),
+      }, 123),
     ).toEqual({
       timestamp: 100,
       lastAttempt: 123,
@@ -74,6 +74,18 @@ describe("limits-fetch.mjs", () => {
       consecutiveFailures: 0,
       lastError: null,
       data: { limits: [] },
+    });
+  });
+
+  test("failure record は破損した consecutiveFailures を非負整数に正規化する", () => {
+    expect(failureRecord({ consecutiveFailures: -2 }, { type: "http_error" }, 100)).toMatchObject({
+      consecutiveFailures: 1,
+    });
+    expect(failureRecord({ consecutiveFailures: 2.9 }, { type: "http_error" }, 100)).toMatchObject({
+      consecutiveFailures: 3,
+    });
+    expect(failureRecord({ consecutiveFailures: Infinity }, { type: "http_error" }, 100)).toMatchObject({
+      consecutiveFailures: 1,
     });
   });
 
@@ -263,9 +275,12 @@ describe("limits-fetch.mjs", () => {
     const file = join(dir, "cache.json");
     const lockDir = join(dir, ".fetch.lock");
     const previousLock = process.env.STATUSLINE_LIMITS_FETCH_LOCK;
+    const previousToken = process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN;
     try {
       await mkdir(lockDir, { recursive: true });
+      await writeFile(join(lockDir, "owner"), "token-a");
       process.env.STATUSLINE_LIMITS_FETCH_LOCK = lockDir;
+      process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN = "token-a";
       await fetchAndCacheLimits({
         cacheFile: file,
         now: 800,
@@ -277,6 +292,43 @@ describe("limits-fetch.mjs", () => {
         delete process.env.STATUSLINE_LIMITS_FETCH_LOCK;
       } else {
         process.env.STATUSLINE_LIMITS_FETCH_LOCK = previousLock;
+      }
+      if (previousToken === undefined) {
+        delete process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN;
+      } else {
+        process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN = previousToken;
+      }
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fetcher は owner token が一致しない lock を削除しない", async () => {
+    const dir = join(tmpdir(), `limits-fetch-lock-owner-${process.pid}-${Date.now()}`);
+    const file = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    const previousLock = process.env.STATUSLINE_LIMITS_FETCH_LOCK;
+    const previousToken = process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN;
+    try {
+      await mkdir(lockDir, { recursive: true });
+      await writeFile(join(lockDir, "owner"), "new-owner");
+      process.env.STATUSLINE_LIMITS_FETCH_LOCK = lockDir;
+      process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN = "old-owner";
+      await fetchAndCacheLimits({
+        cacheFile: file,
+        now: 850,
+        tokenProvider: async () => null,
+      });
+      expect(await readFile(join(lockDir, "owner"), "utf8")).toBe("new-owner");
+    } finally {
+      if (previousLock === undefined) {
+        delete process.env.STATUSLINE_LIMITS_FETCH_LOCK;
+      } else {
+        process.env.STATUSLINE_LIMITS_FETCH_LOCK = previousLock;
+      }
+      if (previousToken === undefined) {
+        delete process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN;
+      } else {
+        process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN = previousToken;
       }
       await rm(dir, { recursive: true, force: true });
     }

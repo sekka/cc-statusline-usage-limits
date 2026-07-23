@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { homedir } from "node:os";
@@ -332,15 +340,21 @@ function fetchLockDir(cacheFile) {
   return join(dirname(cacheFile), ".fetch.lock");
 }
 
-function acquireFetchLock(
-  lockDir,
-  now = Date.now(),
-  lockFs = { mkdirSync, statSync, rmSync, renameSync },
-) {
+function createFetchLock(lockDir, ownerToken, lockFs) {
+  lockFs.mkdirSync(lockDir, { recursive: false, mode: 0o700 });
+  try {
+    lockFs.writeFileSync(join(lockDir, "owner"), ownerToken, { mode: 0o600 });
+    return true;
+  } catch (error) {
+    lockFs.rmSync(lockDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function acquireFetchLock(lockDir, ownerToken, now = Date.now(), lockFs) {
   try {
     lockFs.mkdirSync(dirname(lockDir), { recursive: true, mode: 0o700 });
-    lockFs.mkdirSync(lockDir, { recursive: false, mode: 0o700 });
-    return true;
+    return createFetchLock(lockDir, ownerToken, lockFs);
   } catch (error) {
     if (error?.code !== "EEXIST") return false;
   }
@@ -356,8 +370,7 @@ function acquireFetchLock(
       }
       lockFs.rmSync(staleLockDir, { recursive: true, force: true });
       try {
-        lockFs.mkdirSync(lockDir, { recursive: false, mode: 0o700 });
-        return true;
+        return createFetchLock(lockDir, ownerToken, lockFs);
       } catch {
         return false;
       }
@@ -372,7 +385,7 @@ export function maybeSpawnLimitsFetch({
   now = Date.now(),
   spawnImpl = spawn,
   statImpl = statSync,
-  lockFs = { mkdirSync, statSync, rmSync, renameSync },
+  lockFs = { mkdirSync, statSync, rmSync, renameSync, writeFileSync },
 } = {}) {
   const fetcherPath = join(scriptDir, "limits-fetch.mjs");
   const approvalPath = join(scriptDir, ".extended-approved");
@@ -386,12 +399,17 @@ export function maybeSpawnLimitsFetch({
   }
   if (!shouldFetch(cacheFile, now)) return false;
   const lockDir = fetchLockDir(cacheFile);
-  if (!acquireFetchLock(lockDir, now, lockFs)) return false;
+  const lockOwnerToken = `${process.pid}.${now}.${Math.random().toString(36).slice(2)}`;
+  if (!acquireFetchLock(lockDir, lockOwnerToken, now, lockFs)) return false;
   try {
     const child = spawnImpl(process.execPath, [fetcherPath], {
       detached: true,
       stdio: "ignore",
-      env: { ...process.env, STATUSLINE_LIMITS_FETCH_LOCK: lockDir },
+      env: {
+        ...process.env,
+        STATUSLINE_LIMITS_FETCH_LOCK: lockDir,
+        STATUSLINE_LIMITS_FETCH_LOCK_TOKEN: lockOwnerToken,
+      },
     });
     if (child?.unref) child.unref();
     return true;

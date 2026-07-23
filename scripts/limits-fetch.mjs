@@ -186,9 +186,10 @@ async function readJsonFile(cacheFile, readFileImpl = readFile2) {
 function successRecord(data, now = Date.now()) {
   return { timestamp: now, lastAttempt: now, consecutiveFailures: 0, lastError: null, data };
 }
-function failureRecord(existing, now = Date.now(), failure) {
+function failureRecord(existing, failure, now = Date.now()) {
   const previousFailures = Number(existing?.consecutiveFailures);
-  const consecutiveFailures = (Number.isFinite(previousFailures) ? previousFailures : 0) + 1;
+  const normalizedFailures = Number.isFinite(previousFailures) ? Math.max(0, Math.floor(previousFailures)) : 0;
+  const consecutiveFailures = normalizedFailures + 1;
   return {
     timestamp: existing?.timestamp,
     lastAttempt: now,
@@ -196,6 +197,16 @@ function failureRecord(existing, now = Date.now(), failure) {
     lastError: { ...failure, at: now },
     data: existing?.data
   };
+}
+async function releaseOwnedFetchLock(lockDir, ownerToken) {
+  if (!lockDir || !ownerToken)
+    return;
+  try {
+    const owner = await readFile2(join(lockDir, "owner"), "utf8");
+    if (owner !== ownerToken)
+      return;
+    await rm(lockDir, { recursive: true, force: true });
+  } catch {}
 }
 async function writeCacheRecord2(record, cacheFile = CACHE_FILE, { mkdirImpl = mkdir2, writeFileImpl = writeFile2, renameImpl = rename } = {}) {
   const dir = dirname2(cacheFile);
@@ -249,7 +260,7 @@ async function fetchAndCacheLimits({
     const token = await tokenProvider();
     if (!token) {
       failureError = "missing Claude credential";
-      await writeCacheRecordImpl(failureRecord(existing, now, { type: "missing_credential" }), cacheFile);
+      await writeCacheRecordImpl(failureRecord(existing, { type: "missing_credential" }, now), cacheFile);
       return { ok: false, error: failureError };
     }
     const fetchWithStatus = async (input, init) => {
@@ -290,13 +301,11 @@ async function fetchAndCacheLimits({
       await writeCacheRecordImpl(successRecord(coreRecord.data, now), cacheFile);
       return { ok: true, status };
     }
-    await writeCacheRecordImpl(failureRecord(existing, now, { status, type: failureType }), cacheFile);
+    await writeCacheRecordImpl(failureRecord(existing, { status, type: failureType }, now), cacheFile);
     return { ok: false, error: failureError };
   } finally {
     await rm(tempCoreCache, { force: true });
-    if (process.env.STATUSLINE_LIMITS_FETCH_LOCK) {
-      await rm(process.env.STATUSLINE_LIMITS_FETCH_LOCK, { recursive: true, force: true });
-    }
+    await releaseOwnedFetchLock(process.env.STATUSLINE_LIMITS_FETCH_LOCK, process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN);
   }
 }
 async function main() {

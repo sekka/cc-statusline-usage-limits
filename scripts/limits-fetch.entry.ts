@@ -74,9 +74,12 @@ type FailureInfo = {
   type: string;
 };
 
-export function failureRecord(existing: any, now = Date.now(), failure: FailureInfo) {
+export function failureRecord(existing: any, failure: FailureInfo, now = Date.now()) {
   const previousFailures = Number(existing?.consecutiveFailures);
-  const consecutiveFailures = (Number.isFinite(previousFailures) ? previousFailures : 0) + 1;
+  const normalizedFailures = Number.isFinite(previousFailures)
+    ? Math.max(0, Math.floor(previousFailures))
+    : 0;
+  const consecutiveFailures = normalizedFailures + 1;
   return {
     timestamp: existing?.timestamp,
     lastAttempt: now,
@@ -84,6 +87,15 @@ export function failureRecord(existing: any, now = Date.now(), failure: FailureI
     lastError: { ...failure, at: now },
     data: existing?.data,
   };
+}
+
+async function releaseOwnedFetchLock(lockDir: string | undefined, ownerToken: string | undefined) {
+  if (!lockDir || !ownerToken) return;
+  try {
+    const owner = await readFile(join(lockDir, "owner"), "utf8");
+    if (owner !== ownerToken) return;
+    await rm(lockDir, { recursive: true, force: true });
+  } catch {}
 }
 
 export async function writeCacheRecord(
@@ -149,7 +161,7 @@ export async function fetchAndCacheLimits({
     if (!token) {
       failureError = "missing Claude credential";
       await writeCacheRecordImpl(
-        failureRecord(existing, now, { type: "missing_credential" }),
+        failureRecord(existing, { type: "missing_credential" }, now),
         cacheFile,
       );
       return { ok: false, error: failureError };
@@ -194,13 +206,14 @@ export async function fetchAndCacheLimits({
       return { ok: true, status };
     }
 
-    await writeCacheRecordImpl(failureRecord(existing, now, { status, type: failureType }), cacheFile);
+    await writeCacheRecordImpl(failureRecord(existing, { status, type: failureType }, now), cacheFile);
     return { ok: false, error: failureError };
   } finally {
     await rm(tempCoreCache, { force: true });
-    if (process.env.STATUSLINE_LIMITS_FETCH_LOCK) {
-      await rm(process.env.STATUSLINE_LIMITS_FETCH_LOCK, { recursive: true, force: true });
-    }
+    await releaseOwnedFetchLock(
+      process.env.STATUSLINE_LIMITS_FETCH_LOCK,
+      process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN,
+    );
   }
 }
 
