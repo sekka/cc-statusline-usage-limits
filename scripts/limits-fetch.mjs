@@ -229,12 +229,18 @@ async function releaseOwnedFetchLock(lockDir, ownerToken, ops = { readFileSync, 
     owned = ops.readFileSync(join(tombstone, "owner"), "utf8") === ownerToken;
   } catch {}
   if (owned) {
-    ops.rmSync(tombstone, { recursive: true, force: true });
+    try {
+      ops.rmSync(tombstone, { recursive: true, force: true });
+    } catch {}
     return;
   }
   try {
     ops.renameSync(tombstone, lockDir);
-  } catch {}
+  } catch {
+    try {
+      ops.rmSync(tombstone, { recursive: true, force: true });
+    } catch {}
+  }
 }
 async function writeCacheRecord2(record, cacheFile = CACHE_FILE, { mkdirImpl = mkdir2, writeFileImpl = writeFile2, renameImpl = rename } = {}) {
   const dir = dirname2(cacheFile);
@@ -336,9 +342,10 @@ async function fetchAndCacheLimits({
   } finally {
     try {
       await rmImpl(tempCoreCache, { force: true });
-    } finally {
+    } catch {}
+    try {
       await releaseFetchLockImpl(process.env.STATUSLINE_LIMITS_FETCH_LOCK, process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN);
-    }
+    } catch {}
   }
 }
 async function main() {

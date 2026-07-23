@@ -418,22 +418,78 @@ describe("limits-fetch.mjs", () => {
     }
   });
 
-  test("temp core cache の rm が失敗しても lock release を実行する", async () => {
+  test("temp core cache の rm が失敗しても lock release を実行し fetch 結果を保つ", async () => {
     let released = false;
+    const result = await fetchAndCacheLimits({
+      cacheFile: "/tmp/statusline-release-on-rm-fail/cache.json",
+      now: 900,
+      tokenProvider: async () => null,
+      rmImpl: async () => {
+        throw new Error("rm failed");
+      },
+      releaseFetchLockImpl: async () => {
+        released = true;
+      },
+    });
+    expect(result).toEqual({ ok: false, error: "missing Claude credential" });
+    expect(released).toBe(true);
+  });
+
+  test("lock release 失敗は fetch 結果を置き換えない", async () => {
+    const result = await fetchAndCacheLimits({
+      cacheFile: "/tmp/statusline-release-fail/cache.json",
+      now: 925,
+      tokenProvider: async () => null,
+      releaseFetchLockImpl: async () => {
+        throw new Error("release failed");
+      },
+    });
+    expect(result).toEqual({ ok: false, error: "missing Claude credential" });
+  });
+
+  test("owned tombstone の rm 失敗は release から throw しない", async () => {
+    const now = 2000000000000;
     await expect(
-      fetchAndCacheLimits({
-        cacheFile: "/tmp/statusline-release-on-rm-fail/cache.json",
-        now: 900,
-        tokenProvider: async () => null,
-        rmImpl: async () => {
-          throw new Error("rm failed");
+      releaseOwnedFetchLock("/tmp/statusline-owned-rm-fail/.fetch.lock", "owner-a", {
+        now,
+        statSync() {
+          return { mtimeMs: now - 1000 };
         },
-        releaseFetchLockImpl: async () => {
-          released = true;
+        readFileSync() {
+          return "owner-a";
+        },
+        renameSync() {},
+        rmSync() {
+          throw new Error("tombstone rm failed");
         },
       }),
-    ).rejects.toThrow("rm failed");
-    expect(released).toBe(true);
+    ).resolves.toBeUndefined();
+  });
+
+  test("rename back 失敗時は tombstone の掃除を試みる", async () => {
+    const now = 2000000000000;
+    const tombstoneRemovals: string[] = [];
+    let readCount = 0;
+    let renameCount = 0;
+    await releaseOwnedFetchLock("/tmp/statusline-rename-back-fail/.fetch.lock", "owner-a", {
+      now,
+      statSync() {
+        return { mtimeMs: now - 1000 };
+      },
+      readFileSync() {
+        readCount += 1;
+        return readCount === 1 ? "owner-a" : "owner-b";
+      },
+      renameSync() {
+        renameCount += 1;
+        if (renameCount === 2) throw new Error("rename back failed");
+      },
+      rmSync(path: string) {
+        tombstoneRemovals.push(path);
+      },
+    });
+    expect(tombstoneRemovals).toHaveLength(1);
+    expect(tombstoneRemovals[0]).toContain(".fetch.lock.release.");
   });
 
   test("fetch 例外時は旧実装と同じ例外 message を返す", async () => {

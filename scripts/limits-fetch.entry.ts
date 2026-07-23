@@ -134,13 +134,19 @@ export async function releaseOwnedFetchLock(
   } catch {}
 
   if (owned) {
-    ops.rmSync(tombstone, { recursive: true, force: true });
+    try {
+      ops.rmSync(tombstone, { recursive: true, force: true });
+    } catch {}
     return;
   }
 
   try {
     ops.renameSync(tombstone, lockDir);
-  } catch {}
+  } catch {
+    try {
+      ops.rmSync(tombstone, { recursive: true, force: true });
+    } catch {}
+  }
 }
 
 export async function writeCacheRecord(
@@ -258,12 +264,13 @@ export async function fetchAndCacheLimits({
   } finally {
     try {
       await rmImpl(tempCoreCache, { force: true });
-    } finally {
+    } catch {}
+    try {
       await releaseFetchLockImpl(
         process.env.STATUSLINE_LIMITS_FETCH_LOCK,
         process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN,
       );
-    }
+    } catch {}
   }
 }
 
