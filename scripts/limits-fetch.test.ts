@@ -365,6 +365,35 @@ describe("limits-fetch.mjs", () => {
     }
   });
 
+  test("若い lock でも owner が違う release は canonical lock に触らない", async () => {
+    const dir = join(tmpdir(), `limits-fetch-release-other-owner-${process.pid}-${Date.now()}`);
+    const lockDir = join(dir, ".fetch.lock");
+    const now = 2000000000000;
+    let renamed = false;
+    try {
+      await mkdir(lockDir, { recursive: true });
+      await writeFile(join(lockDir, "owner"), "owner-b");
+
+      await releaseOwnedFetchLock(lockDir, "owner-a", {
+        now,
+        statSync() {
+          return { mtimeMs: now - 1000 };
+        },
+        renameSync() {
+          renamed = true;
+          throw new Error("release should not rename another owner's lock");
+        },
+        readFileSync,
+        rmSync,
+      });
+
+      expect(renamed).toBe(false);
+      expect(await readFile(join(lockDir, "owner"), "utf8")).toBe("owner-b");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("release 中に stale takeover が挟まっても新 lock を削除しない", async () => {
     const dir = join(tmpdir(), `limits-fetch-release-race-${process.pid}-${Date.now()}`);
     const lockDir = join(dir, ".fetch.lock");

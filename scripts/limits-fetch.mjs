@@ -212,6 +212,12 @@ async function releaseOwnedFetchLock(lockDir, ownerToken, ops = { readFileSync, 
   } catch {
     return;
   }
+  try {
+    if (ops.readFileSync(join(lockDir, "owner"), "utf8") !== ownerToken)
+      return;
+  } catch {
+    return;
+  }
   const tombstone = `${lockDir}.release.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
   try {
     ops.renameSync(lockDir, tombstone);
