@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { homedir } from "node:os";
@@ -332,21 +332,35 @@ function fetchLockDir(cacheFile) {
   return join(dirname(cacheFile), ".fetch.lock");
 }
 
-function acquireFetchLock(lockDir, now = Date.now()) {
+function acquireFetchLock(
+  lockDir,
+  now = Date.now(),
+  lockFs = { mkdirSync, statSync, rmSync, renameSync },
+) {
   try {
-    mkdirSync(dirname(lockDir), { recursive: true, mode: 0o700 });
-    mkdirSync(lockDir, { recursive: false, mode: 0o700 });
+    lockFs.mkdirSync(dirname(lockDir), { recursive: true, mode: 0o700 });
+    lockFs.mkdirSync(lockDir, { recursive: false, mode: 0o700 });
     return true;
   } catch (error) {
     if (error?.code !== "EEXIST") return false;
   }
 
   try {
-    const stat = statSync(lockDir);
+    const stat = lockFs.statSync(lockDir);
     if (Number.isFinite(stat.mtimeMs) && now - stat.mtimeMs > FETCH_LOCK_STALE_MS) {
-      rmSync(lockDir, { recursive: true, force: true });
-      mkdirSync(lockDir, { recursive: false, mode: 0o700 });
-      return true;
+      const staleLockDir = `${lockDir}.stale.${process.pid}.${now}.${Math.random().toString(36).slice(2)}`;
+      try {
+        lockFs.renameSync(lockDir, staleLockDir);
+      } catch {
+        return false;
+      }
+      lockFs.rmSync(staleLockDir, { recursive: true, force: true });
+      try {
+        lockFs.mkdirSync(lockDir, { recursive: false, mode: 0o700 });
+        return true;
+      } catch {
+        return false;
+      }
     }
   } catch {}
   return false;
@@ -358,6 +372,7 @@ export function maybeSpawnLimitsFetch({
   now = Date.now(),
   spawnImpl = spawn,
   statImpl = statSync,
+  lockFs = { mkdirSync, statSync, rmSync, renameSync },
 } = {}) {
   const fetcherPath = join(scriptDir, "limits-fetch.mjs");
   const approvalPath = join(scriptDir, ".extended-approved");
@@ -371,7 +386,7 @@ export function maybeSpawnLimitsFetch({
   }
   if (!shouldFetch(cacheFile, now)) return false;
   const lockDir = fetchLockDir(cacheFile);
-  if (!acquireFetchLock(lockDir, now)) return false;
+  if (!acquireFetchLock(lockDir, now, lockFs)) return false;
   try {
     const child = spawnImpl(process.execPath, [fetcherPath], {
       detached: true,
@@ -381,7 +396,7 @@ export function maybeSpawnLimitsFetch({
     if (child?.unref) child.unref();
     return true;
   } catch (error) {
-    rmSync(lockDir, { recursive: true, force: true });
+    lockFs.rmSync(lockDir, { recursive: true, force: true });
     throw error;
   }
 }

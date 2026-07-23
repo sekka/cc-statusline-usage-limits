@@ -491,4 +491,54 @@ describe("statusline.mjs", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("stale lock takeover 敗者は他プロセスの新 lock を削除せず spawn しない", async () => {
+    const dir = join(tmpdir(), `statusline-lock-race-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    let spawned = 0;
+    let removedActiveLock = false;
+    try {
+      await mkdir(lockDir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      const didSpawn = maybeSpawnLimitsFetch({
+        scriptDir: dir,
+        cacheFile,
+        now: 2000000000000,
+        spawnImpl: () => {
+          spawned += 1;
+          return { unref() {} };
+        },
+        lockFs: {
+          mkdirSync(path: string) {
+            if (path === lockDir) {
+              const error = new Error("exists") as Error & { code: string };
+              error.code = "EEXIST";
+              throw error;
+            }
+          },
+          statSync(path: string) {
+            if (path === lockDir) return { mtimeMs: 2000000000000 - 31 * 60 * 1000 };
+            throw new Error("unexpected stat");
+          },
+          renameSync() {
+            const error = new Error("already reclaimed") as Error & { code: string };
+            error.code = "ENOENT";
+            throw error;
+          },
+          rmSync(path: string) {
+            if (path === lockDir) removedActiveLock = true;
+          },
+        },
+      });
+
+      expect(didSpawn).toBe(false);
+      expect(spawned).toBe(0);
+      expect(removedActiveLock).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
