@@ -1,4 +1,4 @@
-import { access, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
@@ -358,6 +358,135 @@ describe("statusline.mjs", () => {
       });
       expect(didSpawn).toBe(true);
       expect(spawned).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("429 連続失敗時は fetch 間隔を指数的に伸ばし上限で頭打ちする", async () => {
+    const dir = join(tmpdir(), `statusline-backoff-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const now = 2000000000000;
+    let spawned = 0;
+    const spawnImpl = () => {
+      spawned += 1;
+      return { unref() {} };
+    };
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      await writeFile(
+        cacheFile,
+        JSON.stringify({
+          timestamp: now - 60 * 60 * 1000,
+          lastAttempt: now - 119 * 1000,
+          consecutiveFailures: 2,
+          lastError: { status: 429, type: "rate_limit", at: now - 119 * 1000 },
+          data: extendedCache.data,
+        }),
+      );
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile, now, spawnImpl })).toBe(false);
+
+      await writeFile(
+        cacheFile,
+        JSON.stringify({
+          timestamp: now - 60 * 60 * 1000,
+          lastAttempt: now - 121 * 1000,
+          consecutiveFailures: 2,
+          lastError: { status: 429, type: "rate_limit", at: now - 121 * 1000 },
+          data: extendedCache.data,
+        }),
+      );
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile, now, spawnImpl })).toBe(true);
+
+      await rm(join(dir, ".fetch.lock"), { recursive: true, force: true });
+      await writeFile(
+        cacheFile,
+        JSON.stringify({
+          timestamp: now - 60 * 60 * 1000,
+          lastAttempt: now - 1799 * 1000,
+          consecutiveFailures: 20,
+          lastError: { status: 429, type: "rate_limit", at: now - 1799 * 1000 },
+          data: extendedCache.data,
+        }),
+      );
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile, now, spawnImpl })).toBe(false);
+
+      await writeFile(
+        cacheFile,
+        JSON.stringify({
+          timestamp: now - 60 * 60 * 1000,
+          lastAttempt: now - 1801 * 1000,
+          consecutiveFailures: 20,
+          lastError: { status: 429, type: "rate_limit", at: now - 1801 * 1000 },
+          data: extendedCache.data,
+        }),
+      );
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile, now, spawnImpl })).toBe(true);
+      expect(spawned).toBe(2);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("成功後の cache はバックオフなしの通常間隔で fetch 判定する", async () => {
+    const dir = join(tmpdir(), `statusline-backoff-reset-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const now = 2000000000000;
+    let spawned = 0;
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+      await writeFile(
+        cacheFile,
+        JSON.stringify({ timestamp: now - 61 * 1000, lastAttempt: now - 61 * 1000, data: {} }),
+      );
+
+      expect(
+        maybeSpawnLimitsFetch({
+          scriptDir: dir,
+          cacheFile,
+          now,
+          spawnImpl: () => {
+            spawned += 1;
+            return { unref() {} };
+          },
+        }),
+      ).toBe(true);
+      expect(spawned).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("lock 保持中は二重 spawn せず stale lock は回収する", async () => {
+    const dir = join(tmpdir(), `statusline-lock-${process.pid}-${Date.now()}`);
+    let spawned = 0;
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      const spawnImpl = () => {
+        spawned += 1;
+        return { unref() {} };
+      };
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl })).toBe(
+        true,
+      );
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl })).toBe(
+        false,
+      );
+
+      const stale = new Date(Date.now() - 31 * 60 * 1000);
+      await utimes(join(dir, ".fetch.lock"), stale, stale);
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl })).toBe(
+        true,
+      );
+      expect(spawned).toBe(2);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

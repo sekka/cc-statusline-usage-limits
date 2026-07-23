@@ -66,11 +66,24 @@ async function readJsonFile(cacheFile: string, readFileImpl: typeof readFile = r
 }
 
 export function successRecord(data: unknown, now = Date.now()) {
-  return { timestamp: now, lastAttempt: now, data };
+  return { timestamp: now, lastAttempt: now, consecutiveFailures: 0, lastError: null, data };
 }
 
-export function failureRecord(existing: any, now = Date.now()) {
-  return { timestamp: existing?.timestamp, lastAttempt: now, data: existing?.data };
+type FailureInfo = {
+  status?: number;
+  type: string;
+};
+
+export function failureRecord(existing: any, now = Date.now(), failure: FailureInfo) {
+  const previousFailures = Number(existing?.consecutiveFailures);
+  const consecutiveFailures = (Number.isFinite(previousFailures) ? previousFailures : 0) + 1;
+  return {
+    timestamp: existing?.timestamp,
+    lastAttempt: now,
+    consecutiveFailures,
+    lastError: { ...failure, at: now },
+    data: existing?.data,
+  };
 }
 
 export async function writeCacheRecord(
@@ -87,6 +100,17 @@ export async function writeCacheRecord(
     await chmod(dir, 0o700);
     await chmod(cacheFile, 0o600);
   } catch {}
+}
+
+async function failureTypeFromResponse(response: Response) {
+  if (response.status === 429) return "rate_limit";
+  try {
+    const body = await response.clone().json();
+    if (body?.error?.type === "rate_limit_error" || body?.type === "rate_limit_error") {
+      return "rate_limit";
+    }
+  } catch {}
+  return "http_error";
 }
 
 function coreCacheFile(cacheFile: string) {
@@ -116,23 +140,31 @@ export async function fetchAndCacheLimits({
   const tempCoreCache = coreCacheFile(cacheFile);
   let status: number | undefined;
   let failureError = "usage fetch failed";
+  let failureType = "unknown";
 
   try {
     await seedCoreCache(tempCoreCache, existing);
     const token = await tokenProvider();
     if (!token) {
       failureError = "missing Claude credential";
-      await writeCacheRecordImpl(failureRecord(existing, now), cacheFile);
+      await writeCacheRecordImpl(
+        failureRecord(existing, now, { type: "missing_credential" }),
+        cacheFile,
+      );
       return { ok: false, error: failureError };
     }
     const fetchWithStatus: typeof fetch = async (input, init) => {
       try {
         const response = await fetchImpl(input, init);
         status = response.status;
-        if (!response.ok) failureError = `usage API returned HTTP ${response.status}`;
+        if (!response.ok) {
+          failureError = `usage API returned HTTP ${response.status}`;
+          failureType = await failureTypeFromResponse(response);
+        }
         return response;
       } catch (error) {
         failureError = error instanceof Error ? error.message : String(error);
+        failureType = "network_error";
         throw error;
       }
     };
@@ -161,10 +193,13 @@ export async function fetchAndCacheLimits({
       return { ok: true, status };
     }
 
-    await writeCacheRecordImpl(failureRecord(existing, now), cacheFile);
+    await writeCacheRecordImpl(failureRecord(existing, now, { status, type: failureType }), cacheFile);
     return { ok: false, error: failureError };
   } finally {
     await rm(tempCoreCache, { force: true });
+    if (process.env.STATUSLINE_LIMITS_FETCH_LOCK) {
+      await rm(process.env.STATUSLINE_LIMITS_FETCH_LOCK, { recursive: true, force: true });
+    }
   }
 }
 

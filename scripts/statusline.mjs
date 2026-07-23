@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { homedir } from "node:os";
@@ -16,6 +16,8 @@ const COLORS = {
 
 const CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 const FETCH_MIN_INTERVAL_MS = 60 * 1000;
+const FETCH_RATE_LIMIT_BACKOFF_MS = [60_000, 120_000, 300_000, 600_000, 1_200_000, 1_800_000];
+const FETCH_LOCK_STALE_MS = 30 * 60 * 1000;
 const TOKYO_TZ = "Asia/Tokyo";
 
 export function defaultInstallDir() {
@@ -306,16 +308,48 @@ export function needsExtendedReapproval({
   }
 }
 
+function fetchBackoffMs(record) {
+  const isRateLimit =
+    record?.lastError?.type === "rate_limit" || Number(record?.lastError?.status) === 429;
+  if (!isRateLimit) return FETCH_MIN_INTERVAL_MS;
+  const failures = Math.max(1, Math.floor(Number(record?.consecutiveFailures) || 1));
+  return FETCH_RATE_LIMIT_BACKOFF_MS[Math.min(failures - 1, FETCH_RATE_LIMIT_BACKOFF_MS.length - 1)];
+}
+
 function shouldFetch(cacheFile, now = Date.now()) {
   try {
     const record = parseCache(readFileSync(cacheFile, "utf8"));
     if (!record) return true;
     const lastAttempt = Number(record.lastAttempt || record.timestamp || 0);
     if (!Number.isFinite(lastAttempt) || lastAttempt > now) return true;
-    return now - lastAttempt > FETCH_MIN_INTERVAL_MS;
+    return now - lastAttempt > fetchBackoffMs(record);
   } catch {
     return true;
   }
+}
+
+function fetchLockDir(cacheFile) {
+  return join(dirname(cacheFile), ".fetch.lock");
+}
+
+function acquireFetchLock(lockDir, now = Date.now()) {
+  try {
+    mkdirSync(dirname(lockDir), { recursive: true, mode: 0o700 });
+    mkdirSync(lockDir, { recursive: false, mode: 0o700 });
+    return true;
+  } catch (error) {
+    if (error?.code !== "EEXIST") return false;
+  }
+
+  try {
+    const stat = statSync(lockDir);
+    if (Number.isFinite(stat.mtimeMs) && now - stat.mtimeMs > FETCH_LOCK_STALE_MS) {
+      rmSync(lockDir, { recursive: true, force: true });
+      mkdirSync(lockDir, { recursive: false, mode: 0o700 });
+      return true;
+    }
+  } catch {}
+  return false;
 }
 
 export function maybeSpawnLimitsFetch({
@@ -336,13 +370,20 @@ export function maybeSpawnLimitsFetch({
     return false;
   }
   if (!shouldFetch(cacheFile, now)) return false;
-  const child = spawnImpl(process.execPath, [fetcherPath], {
-    detached: true,
-    stdio: "ignore",
-    env: process.env,
-  });
-  if (child?.unref) child.unref();
-  return true;
+  const lockDir = fetchLockDir(cacheFile);
+  if (!acquireFetchLock(lockDir, now)) return false;
+  try {
+    const child = spawnImpl(process.execPath, [fetcherPath], {
+      detached: true,
+      stdio: "ignore",
+      env: { ...process.env, STATUSLINE_LIMITS_FETCH_LOCK: lockDir },
+    });
+    if (child?.unref) child.unref();
+    return true;
+  } catch (error) {
+    rmSync(lockDir, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export async function main() {

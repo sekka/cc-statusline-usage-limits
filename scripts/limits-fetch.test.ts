@@ -46,11 +46,34 @@ describe("limits-fetch.mjs", () => {
 
   test("success record と failure record を生成する", () => {
     const data = { limits: [] };
-    expect(successRecord(data, 123)).toEqual({ timestamp: 123, lastAttempt: 123, data });
-    expect(failureRecord({ timestamp: 100, data }, 123)).toEqual({
+    expect(successRecord(data, 123)).toEqual({
+      timestamp: 123,
+      lastAttempt: 123,
+      consecutiveFailures: 0,
+      lastError: null,
+      data,
+    });
+    expect(
+      failureRecord({ timestamp: 100, data, consecutiveFailures: 1 }, 123, {
+        status: 429,
+        type: "rate_limit",
+      }),
+    ).toEqual({
       timestamp: 100,
       lastAttempt: 123,
+      consecutiveFailures: 2,
+      lastError: { status: 429, type: "rate_limit", at: 123 },
       data,
+    });
+  });
+
+  test("success record は失敗カウンタと lastError をリセットする", () => {
+    expect(successRecord({ limits: [] }, 456)).toEqual({
+      timestamp: 456,
+      lastAttempt: 456,
+      consecutiveFailures: 0,
+      lastError: null,
+      data: { limits: [] },
     });
   });
 
@@ -87,6 +110,8 @@ describe("limits-fetch.mjs", () => {
       expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
         timestamp: 456,
         lastAttempt: 456,
+        consecutiveFailures: 0,
+        lastError: null,
         data: { limits: [{ bucket: "five_hour" }] },
       });
     } finally {
@@ -111,6 +136,8 @@ describe("limits-fetch.mjs", () => {
       expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
         timestamp: 100,
         lastAttempt: 200,
+        consecutiveFailures: 1,
+        lastError: { status: 500, type: "http_error", at: 200 },
         data,
       });
     } finally {
@@ -132,7 +159,11 @@ describe("limits-fetch.mjs", () => {
         },
       });
       expect(result).toEqual({ ok: false, error: "missing Claude credential" });
-      expect(JSON.parse(await readFile(file, "utf8"))).toEqual({ lastAttempt: 300 });
+      expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+        lastAttempt: 300,
+        consecutiveFailures: 1,
+        lastError: { type: "missing_credential", at: 300 },
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -151,6 +182,80 @@ describe("limits-fetch.mjs", () => {
       });
       expect(result).toEqual({ ok: false, error: "usage API returned HTTP 503" });
     } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("429 HTTP 失敗時は rate_limit error として記録する", async () => {
+    const dir = join(tmpdir(), `limits-fetch-rate-limit-${process.pid}-${Date.now()}`);
+    const file = join(dir, "cache.json");
+    const data = { limits: [{ bucket: "five_hour" }] };
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeCacheRecord({ timestamp: 100, lastAttempt: 100, data }, file);
+      const result = await fetchAndCacheLimits({
+        cacheFile: file,
+        now: 600,
+        tokenProvider: async () => "token",
+        fetchImpl: async () =>
+          new Response(JSON.stringify({ error: { type: "rate_limit_error" } }), { status: 429 }),
+      });
+      expect(result).toEqual({ ok: false, error: "usage API returned HTTP 429" });
+      expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+        timestamp: 100,
+        lastAttempt: 600,
+        consecutiveFailures: 1,
+        lastError: { status: 429, type: "rate_limit", at: 600 },
+        data,
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("rate_limit_error body は status 429 以外でも rate_limit として記録する", async () => {
+    const dir = join(tmpdir(), `limits-fetch-rate-limit-body-${process.pid}-${Date.now()}`);
+    const file = join(dir, "cache.json");
+    try {
+      await mkdir(dir, { recursive: true });
+      const result = await fetchAndCacheLimits({
+        cacheFile: file,
+        now: 700,
+        tokenProvider: async () => "token",
+        fetchImpl: async () =>
+          new Response(JSON.stringify({ error: { type: "rate_limit_error" } }), { status: 400 }),
+      });
+      expect(result).toEqual({ ok: false, error: "usage API returned HTTP 400" });
+      expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+        lastAttempt: 700,
+        consecutiveFailures: 1,
+        lastError: { status: 400, type: "rate_limit", at: 700 },
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fetcher は statusline から渡された lock を終了時に解放する", async () => {
+    const dir = join(tmpdir(), `limits-fetch-lock-release-${process.pid}-${Date.now()}`);
+    const file = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    const previousLock = process.env.STATUSLINE_LIMITS_FETCH_LOCK;
+    try {
+      await mkdir(lockDir, { recursive: true });
+      process.env.STATUSLINE_LIMITS_FETCH_LOCK = lockDir;
+      await fetchAndCacheLimits({
+        cacheFile: file,
+        now: 800,
+        tokenProvider: async () => null,
+      });
+      await expect(stat(lockDir)).rejects.toThrow();
+    } finally {
+      if (previousLock === undefined) {
+        delete process.env.STATUSLINE_LIMITS_FETCH_LOCK;
+      } else {
+        process.env.STATUSLINE_LIMITS_FETCH_LOCK = previousLock;
+      }
       await rm(dir, { recursive: true, force: true });
     }
   });
