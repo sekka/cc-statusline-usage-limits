@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync, statSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { homedir } from "node:os";
@@ -16,6 +24,9 @@ const COLORS = {
 
 const CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 const FETCH_MIN_INTERVAL_MS = 60 * 1000;
+const FETCH_RATE_LIMIT_BACKOFF_MS = [60_000, 120_000, 300_000, 600_000, 1_200_000, 1_800_000];
+const FETCH_LOCK_STALE_MS = 30 * 60 * 1000;
+const FETCH_LOCK_RELEASE_SAFETY_MARGIN_MS = 60 * 1000;
 const TOKYO_TZ = "Asia/Tokyo";
 
 export function defaultInstallDir() {
@@ -306,16 +317,128 @@ export function needsExtendedReapproval({
   }
 }
 
+function fetchBackoffMs(record) {
+  const isRateLimit =
+    record?.lastError?.type === "rate_limit" || Number(record?.lastError?.status) === 429;
+  if (!isRateLimit) return FETCH_MIN_INTERVAL_MS;
+  const failures = Math.max(1, Math.floor(Number(record?.consecutiveFailures) || 1));
+  return FETCH_RATE_LIMIT_BACKOFF_MS[Math.min(failures - 1, FETCH_RATE_LIMIT_BACKOFF_MS.length - 1)];
+}
+
 function shouldFetch(cacheFile, now = Date.now()) {
   try {
     const record = parseCache(readFileSync(cacheFile, "utf8"));
     if (!record) return true;
     const lastAttempt = Number(record.lastAttempt || record.timestamp || 0);
     if (!Number.isFinite(lastAttempt) || lastAttempt > now) return true;
-    return now - lastAttempt > FETCH_MIN_INTERVAL_MS;
+    return now - lastAttempt > fetchBackoffMs(record);
   } catch {
     return true;
   }
+}
+
+function fetchLockDir(cacheFile) {
+  return join(dirname(cacheFile), ".fetch.lock");
+}
+
+function createFetchLock(lockDir, ownerToken, lockFs) {
+  lockFs.mkdirSync(lockDir, { recursive: false, mode: 0o700 });
+  try {
+    lockFs.writeFileSync(join(lockDir, "owner"), ownerToken, { mode: 0o600 });
+    return true;
+  } catch (error) {
+    lockFs.rmSync(lockDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+function restoreOrRemoveMovedFetchLock(fromDir, toDir, lockFs) {
+  try {
+    lockFs.renameSync(fromDir, toDir);
+  } catch {
+    try {
+      lockFs.rmSync(fromDir, { recursive: true, force: true });
+    } catch {}
+  }
+}
+
+function acquireFetchLock(lockDir, ownerToken, now = Date.now(), lockFs) {
+  try {
+    lockFs.mkdirSync(dirname(lockDir), { recursive: true, mode: 0o700 });
+    return createFetchLock(lockDir, ownerToken, lockFs);
+  } catch (error) {
+    if (error?.code !== "EEXIST") return false;
+  }
+
+  try {
+    const stat = lockFs.statSync(lockDir);
+    if (Number.isFinite(stat.mtimeMs) && now - stat.mtimeMs > FETCH_LOCK_STALE_MS) {
+      const staleLockDir = `${lockDir}.stale.${process.pid}.${now}.${Math.random().toString(36).slice(2)}`;
+      try {
+        lockFs.renameSync(lockDir, staleLockDir);
+      } catch {
+        return false;
+      }
+      try {
+        const movedStat = lockFs.statSync(staleLockDir);
+        if (!Number.isFinite(movedStat.mtimeMs) || now - movedStat.mtimeMs <= FETCH_LOCK_STALE_MS) {
+          restoreOrRemoveMovedFetchLock(staleLockDir, lockDir, lockFs);
+          return false;
+        }
+      } catch {
+        restoreOrRemoveMovedFetchLock(staleLockDir, lockDir, lockFs);
+        return false;
+      }
+      try {
+        lockFs.rmSync(staleLockDir, { recursive: true, force: true });
+      } catch {
+        return false;
+      }
+      try {
+        return createFetchLock(lockDir, ownerToken, lockFs);
+      } catch {
+        return false;
+      }
+    }
+  } catch {}
+  return false;
+}
+
+function releaseOwnedFetchLock(lockDir, ownerToken, lockFs) {
+  if (!lockDir || !ownerToken) return;
+  try {
+    const stat = lockFs.statSync(lockDir);
+    const age = Date.now() - stat.mtimeMs;
+    if (Number.isFinite(age) && age >= FETCH_LOCK_STALE_MS - FETCH_LOCK_RELEASE_SAFETY_MARGIN_MS) {
+      return;
+    }
+  } catch {
+    return;
+  }
+  try {
+    if (lockFs.readFileSync(join(lockDir, "owner"), "utf8") !== ownerToken) return;
+  } catch {
+    return;
+  }
+  const tombstoneDir = `${lockDir}.release.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+  try {
+    lockFs.renameSync(lockDir, tombstoneDir);
+  } catch {
+    return;
+  }
+  let ownsTombstone = false;
+  try {
+    ownsTombstone = lockFs.readFileSync(join(tombstoneDir, "owner"), "utf8") === ownerToken;
+  } catch {}
+  if (ownsTombstone) {
+    try {
+      lockFs.rmSync(tombstoneDir, { recursive: true, force: true });
+    } catch {}
+    return;
+  }
+  try {
+    lockFs.renameSync(tombstoneDir, lockDir);
+  } catch {}
 }
 
 export function maybeSpawnLimitsFetch({
@@ -324,6 +447,7 @@ export function maybeSpawnLimitsFetch({
   now = Date.now(),
   spawnImpl = spawn,
   statImpl = statSync,
+  lockFs = { mkdirSync, readFileSync, statSync, rmSync, renameSync, writeFileSync },
 } = {}) {
   const fetcherPath = join(scriptDir, "limits-fetch.mjs");
   const approvalPath = join(scriptDir, ".extended-approved");
@@ -336,13 +460,30 @@ export function maybeSpawnLimitsFetch({
     return false;
   }
   if (!shouldFetch(cacheFile, now)) return false;
-  const child = spawnImpl(process.execPath, [fetcherPath], {
-    detached: true,
-    stdio: "ignore",
-    env: process.env,
-  });
-  if (child?.unref) child.unref();
-  return true;
+  const lockDir = fetchLockDir(cacheFile);
+  const lockOwnerToken = `${process.pid}.${now}.${Math.random().toString(36).slice(2)}`;
+  if (!acquireFetchLock(lockDir, lockOwnerToken, now, lockFs)) return false;
+  try {
+    const child = spawnImpl(process.execPath, [fetcherPath], {
+      detached: true,
+      stdio: "ignore",
+      env: {
+        ...process.env,
+        STATUSLINE_LIMITS_FETCH_LOCK: lockDir,
+        STATUSLINE_LIMITS_FETCH_LOCK_TOKEN: lockOwnerToken,
+      },
+    });
+    if (child?.once) {
+      child.once("error", () => {
+        releaseOwnedFetchLock(lockDir, lockOwnerToken, lockFs);
+      });
+    }
+    if (child?.unref) child.unref();
+    return true;
+  } catch (error) {
+    releaseOwnedFetchLock(lockDir, lockOwnerToken, lockFs);
+    return false;
+  }
 }
 
 export async function main() {

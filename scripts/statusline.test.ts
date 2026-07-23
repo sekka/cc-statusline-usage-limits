@@ -1,4 +1,4 @@
-import { access, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
@@ -347,17 +347,380 @@ describe("statusline.mjs", () => {
     await writeFile(join(dir, "limits-fetch.mjs"), "");
     await writeFile(join(dir, ".extended-approved"), "");
     let spawned = 0;
+    let spawnEnv: NodeJS.ProcessEnv | undefined;
     try {
       const didSpawn = maybeSpawnLimitsFetch({
         scriptDir: dir,
         cacheFile: join(dir, "missing-cache.json"),
-        spawnImpl: () => {
+        spawnImpl: (_command, _args, options) => {
           spawned += 1;
+          spawnEnv = options?.env;
           return { unref() {} };
         },
       });
       expect(didSpawn).toBe(true);
       expect(spawned).toBe(1);
+      expect(spawnEnv?.STATUSLINE_LIMITS_FETCH_LOCK).toBe(join(dir, ".fetch.lock"));
+      expect(spawnEnv?.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN).toBeTruthy();
+      expect(
+        await Bun.file(join(dir, ".fetch.lock", "owner")).text(),
+      ).toBe(spawnEnv?.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("429 連続失敗時は fetch 間隔を指数的に伸ばし上限で頭打ちする", async () => {
+    const dir = join(tmpdir(), `statusline-backoff-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const now = 2000000000000;
+    let spawned = 0;
+    const spawnImpl = () => {
+      spawned += 1;
+      return { unref() {} };
+    };
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      await writeFile(
+        cacheFile,
+        JSON.stringify({
+          timestamp: now - 60 * 60 * 1000,
+          lastAttempt: now - 119 * 1000,
+          consecutiveFailures: 2,
+          lastError: { status: 429, type: "rate_limit", at: now - 119 * 1000 },
+          data: extendedCache.data,
+        }),
+      );
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile, now, spawnImpl })).toBe(false);
+
+      await writeFile(
+        cacheFile,
+        JSON.stringify({
+          timestamp: now - 60 * 60 * 1000,
+          lastAttempt: now - 121 * 1000,
+          consecutiveFailures: 2,
+          lastError: { status: 429, type: "rate_limit", at: now - 121 * 1000 },
+          data: extendedCache.data,
+        }),
+      );
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile, now, spawnImpl })).toBe(true);
+
+      await rm(join(dir, ".fetch.lock"), { recursive: true, force: true });
+      await writeFile(
+        cacheFile,
+        JSON.stringify({
+          timestamp: now - 60 * 60 * 1000,
+          lastAttempt: now - 1799 * 1000,
+          consecutiveFailures: 20,
+          lastError: { status: 429, type: "rate_limit", at: now - 1799 * 1000 },
+          data: extendedCache.data,
+        }),
+      );
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile, now, spawnImpl })).toBe(false);
+
+      await writeFile(
+        cacheFile,
+        JSON.stringify({
+          timestamp: now - 60 * 60 * 1000,
+          lastAttempt: now - 1801 * 1000,
+          consecutiveFailures: 20,
+          lastError: { status: 429, type: "rate_limit", at: now - 1801 * 1000 },
+          data: extendedCache.data,
+        }),
+      );
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile, now, spawnImpl })).toBe(true);
+      expect(spawned).toBe(2);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("成功後の cache はバックオフなしの通常間隔で fetch 判定する", async () => {
+    const dir = join(tmpdir(), `statusline-backoff-reset-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const now = 2000000000000;
+    let spawned = 0;
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+      await writeFile(
+        cacheFile,
+        JSON.stringify({ timestamp: now - 61 * 1000, lastAttempt: now - 61 * 1000, data: {} }),
+      );
+
+      expect(
+        maybeSpawnLimitsFetch({
+          scriptDir: dir,
+          cacheFile,
+          now,
+          spawnImpl: () => {
+            spawned += 1;
+            return { unref() {} };
+          },
+        }),
+      ).toBe(true);
+      expect(spawned).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("lock 保持中は二重 spawn せず stale lock は回収する", async () => {
+    const dir = join(tmpdir(), `statusline-lock-${process.pid}-${Date.now()}`);
+    let spawned = 0;
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      const spawnImpl = () => {
+        spawned += 1;
+        return { unref() {} };
+      };
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl })).toBe(
+        true,
+      );
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl })).toBe(
+        false,
+      );
+
+      const stale = new Date(Date.now() - 31 * 60 * 1000);
+      await utimes(join(dir, ".fetch.lock"), stale, stale);
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl })).toBe(
+        true,
+      );
+      expect(spawned).toBe(2);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("stale lock takeover 敗者は他プロセスの新 lock を削除せず spawn しない", async () => {
+    const dir = join(tmpdir(), `statusline-lock-race-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    let spawned = 0;
+    let removedActiveLock = false;
+    try {
+      await mkdir(lockDir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      const didSpawn = maybeSpawnLimitsFetch({
+        scriptDir: dir,
+        cacheFile,
+        now: 2000000000000,
+        spawnImpl: () => {
+          spawned += 1;
+          return { unref() {} };
+        },
+        lockFs: {
+          mkdirSync(path: string) {
+            if (path === lockDir) {
+              const error = new Error("exists") as Error & { code: string };
+              error.code = "EEXIST";
+              throw error;
+            }
+          },
+          statSync(path: string) {
+            if (path === lockDir) return { mtimeMs: 2000000000000 - 31 * 60 * 1000 };
+            throw new Error("unexpected stat");
+          },
+          renameSync() {
+            const error = new Error("already reclaimed") as Error & { code: string };
+            error.code = "ENOENT";
+            throw error;
+          },
+          rmSync(path: string) {
+            if (path === lockDir) removedActiveLock = true;
+          },
+        },
+      });
+
+      expect(didSpawn).toBe(false);
+      expect(spawned).toBe(0);
+      expect(removedActiveLock).toBe(false);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("stale 判定後に fresh lock へ差し替わった場合は lock を戻して spawn しない", async () => {
+    const dir = join(tmpdir(), `statusline-lock-fresh-race-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    const now = 2000000000000;
+    let spawned = 0;
+    let staleLockDir = "";
+    const renames: Array<[string, string]> = [];
+    const removals: string[] = [];
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      const didSpawn = maybeSpawnLimitsFetch({
+        scriptDir: dir,
+        cacheFile,
+        now,
+        spawnImpl: () => {
+          spawned += 1;
+          return { unref() {} };
+        },
+        lockFs: {
+          mkdirSync(path: string) {
+            if (path === lockDir) {
+              const error = new Error("exists") as Error & { code: string };
+              error.code = "EEXIST";
+              throw error;
+            }
+          },
+          statSync(path: string) {
+            if (path === lockDir) return { mtimeMs: now - 31 * 60 * 1000 };
+            if (path === staleLockDir) return { mtimeMs: now - 1000 };
+            throw new Error(`unexpected stat ${path}`);
+          },
+          renameSync(from: string, to: string) {
+            renames.push([from, to]);
+            if (from === lockDir) staleLockDir = to;
+          },
+          rmSync(path: string) {
+            removals.push(path);
+          },
+          writeFileSync() {
+            throw new Error("fresh lock should not be replaced");
+          },
+        },
+      });
+
+      expect(didSpawn).toBe(false);
+      expect(spawned).toBe(0);
+      expect(renames).toEqual([
+        [lockDir, staleLockDir],
+        [staleLockDir, lockDir],
+      ]);
+      expect(removals).toEqual([]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("fresh 判定後の rename back 失敗時は tombstone を掃除して spawn しない", async () => {
+    const dir = join(tmpdir(), `statusline-lock-fresh-restore-fail-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    const now = 2000000000000;
+    let spawned = 0;
+    let staleLockDir = "";
+    const removals: string[] = [];
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      const didSpawn = maybeSpawnLimitsFetch({
+        scriptDir: dir,
+        cacheFile,
+        now,
+        spawnImpl: () => {
+          spawned += 1;
+          return { unref() {} };
+        },
+        lockFs: {
+          mkdirSync(path: string) {
+            if (path === lockDir) {
+              const error = new Error("exists") as Error & { code: string };
+              error.code = "EEXIST";
+              throw error;
+            }
+          },
+          statSync(path: string) {
+            if (path === lockDir) return { mtimeMs: now - 31 * 60 * 1000 };
+            if (path === staleLockDir) return { mtimeMs: now - 1000 };
+            throw new Error(`unexpected stat ${path}`);
+          },
+          renameSync(from: string, to: string) {
+            if (from === lockDir) {
+              staleLockDir = to;
+              return;
+            }
+            if (from === staleLockDir && to === lockDir) {
+              throw new Error("canonical lock already exists");
+            }
+            throw new Error(`unexpected rename ${from} ${to}`);
+          },
+          rmSync(path: string) {
+            removals.push(path);
+          },
+          writeFileSync() {
+            throw new Error("fresh lock should not be replaced");
+          },
+        },
+      });
+
+      expect(didSpawn).toBe(false);
+      expect(spawned).toBe(0);
+      expect(removals).toEqual([staleLockDir]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("spawn 同期失敗時は lock を掃除して false を返す", async () => {
+    const dir = join(tmpdir(), `statusline-spawn-fail-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      expect(
+        maybeSpawnLimitsFetch({
+          scriptDir: dir,
+          cacheFile,
+          spawnImpl: () => {
+            throw new Error("spawn failed");
+          },
+        }),
+      ).toBe(false);
+      await expect(access(lockDir)).rejects.toThrow();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("spawn 非同期 error 時は owner token が一致する lock を解放する", async () => {
+    const dir = join(tmpdir(), `statusline-spawn-async-error-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    let errorHandler: (() => void) | undefined;
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      const didSpawn = maybeSpawnLimitsFetch({
+        scriptDir: dir,
+        cacheFile,
+        spawnImpl: () => ({
+          once(event: string, handler: () => void) {
+            if (event === "error") errorHandler = handler;
+            return this;
+          },
+          unref() {},
+        }),
+      });
+
+      expect(didSpawn).toBe(true);
+      expect(errorHandler).toBeDefined();
+      await expect(access(lockDir)).resolves.toBeFalsy();
+      errorHandler?.();
+      await expect(access(lockDir)).rejects.toThrow();
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

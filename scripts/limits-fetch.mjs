@@ -2,6 +2,7 @@
 
 // scripts/limits-fetch.entry.ts
 import { execFile as execFile2 } from "node:child_process";
+import { readFileSync, renameSync, rmSync, statSync } from "node:fs";
 import { chmod as chmod2, mkdir as mkdir2, readFile as readFile2, rename, rm, writeFile as writeFile2 } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname as dirname2, join } from "node:path";
@@ -137,6 +138,8 @@ var execFileAsync2 = promisify2(execFile2);
 var API_URL = "https://api.anthropic.com/api/oauth/usage";
 var CACHE_FILE = join(homedir(), ".claude", "statusline-limits", "cache.json");
 var CREDENTIALS_FILE = join(homedir(), ".claude", ".credentials.json");
+var FETCH_LOCK_STALE_MS = 30 * 60 * 1000;
+var FETCH_LOCK_RELEASE_SAFETY_MARGIN_MS = 60 * 1000;
 function cacheFilePath() {
   return CACHE_FILE;
 }
@@ -184,10 +187,60 @@ async function readJsonFile(cacheFile, readFileImpl = readFile2) {
   }
 }
 function successRecord(data, now = Date.now()) {
-  return { timestamp: now, lastAttempt: now, data };
+  return { timestamp: now, lastAttempt: now, consecutiveFailures: 0, lastError: null, data };
 }
-function failureRecord(existing, now = Date.now()) {
-  return { timestamp: existing?.timestamp, lastAttempt: now, data: existing?.data };
+function failureRecord(existing, failure, now = Date.now()) {
+  const previousFailures = Number(existing?.consecutiveFailures);
+  const normalizedFailures = Number.isFinite(previousFailures) ? Math.max(0, Math.floor(previousFailures)) : 0;
+  const consecutiveFailures = normalizedFailures + 1;
+  return {
+    timestamp: existing?.timestamp,
+    lastAttempt: now,
+    consecutiveFailures,
+    lastError: { ...failure, at: now },
+    data: existing?.data
+  };
+}
+async function releaseOwnedFetchLock(lockDir, ownerToken, ops = { readFileSync, renameSync, rmSync, statSync }) {
+  if (!lockDir || !ownerToken)
+    return;
+  try {
+    const age = (ops.now ?? Date.now()) - ops.statSync(lockDir).mtimeMs;
+    if (Number.isFinite(age) && age >= FETCH_LOCK_STALE_MS - FETCH_LOCK_RELEASE_SAFETY_MARGIN_MS) {
+      return;
+    }
+  } catch {
+    return;
+  }
+  try {
+    if (ops.readFileSync(join(lockDir, "owner"), "utf8") !== ownerToken)
+      return;
+  } catch {
+    return;
+  }
+  const tombstone = `${lockDir}.release.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}`;
+  try {
+    ops.renameSync(lockDir, tombstone);
+  } catch {
+    return;
+  }
+  let owned = false;
+  try {
+    owned = ops.readFileSync(join(tombstone, "owner"), "utf8") === ownerToken;
+  } catch {}
+  if (owned) {
+    try {
+      ops.rmSync(tombstone, { recursive: true, force: true });
+    } catch {}
+    return;
+  }
+  try {
+    ops.renameSync(tombstone, lockDir);
+  } catch {
+    try {
+      ops.rmSync(tombstone, { recursive: true, force: true });
+    } catch {}
+  }
 }
 async function writeCacheRecord2(record, cacheFile = CACHE_FILE, { mkdirImpl = mkdir2, writeFileImpl = writeFile2, renameImpl = rename } = {}) {
   const dir = dirname2(cacheFile);
@@ -199,6 +252,19 @@ async function writeCacheRecord2(record, cacheFile = CACHE_FILE, { mkdirImpl = m
     await chmod2(dir, 448);
     await chmod2(cacheFile, 384);
   } catch {}
+}
+async function failureTypeFromResponse(response) {
+  if (response.status === 429)
+    return "rate_limit";
+  if (response.status === 401)
+    return "authentication_error";
+  try {
+    const body = await response.clone().json();
+    if (body?.error?.type === "rate_limit_error" || body?.type === "rate_limit_error") {
+      return "rate_limit";
+    }
+  } catch {}
+  return "http_error";
 }
 function coreCacheFile(cacheFile) {
   const dir = dirname2(cacheFile);
@@ -216,29 +282,35 @@ async function fetchAndCacheLimits({
   fetchImpl = globalThis.fetch,
   readFileImpl = readFile2,
   tokenProvider = getToken,
-  writeCacheRecordImpl = writeCacheRecord2
+  writeCacheRecordImpl = writeCacheRecord2,
+  rmImpl = rm,
+  releaseFetchLockImpl = releaseOwnedFetchLock
 } = {}) {
   const existing = await readJsonFile(cacheFile, readFileImpl);
   const tempCoreCache = coreCacheFile(cacheFile);
   let status;
   let failureError = "usage fetch failed";
+  let failureType = "unknown";
   try {
     await seedCoreCache(tempCoreCache, existing);
     const token = await tokenProvider();
     if (!token) {
       failureError = "missing Claude credential";
-      await writeCacheRecordImpl(failureRecord(existing, now), cacheFile);
+      await writeCacheRecordImpl(failureRecord(existing, { type: "missing_credential" }, now), cacheFile);
       return { ok: false, error: failureError };
     }
     const fetchWithStatus = async (input, init) => {
       try {
         const response = await fetchImpl(input, init);
         status = response.status;
-        if (!response.ok)
+        if (!response.ok) {
           failureError = `usage API returned HTTP ${response.status}`;
+          failureType = await failureTypeFromResponse(response);
+        }
         return response;
       } catch (error) {
         failureError = error instanceof Error ? error.message : String(error);
+        failureType = "network_error";
         throw error;
       }
     };
@@ -265,10 +337,15 @@ async function fetchAndCacheLimits({
       await writeCacheRecordImpl(successRecord(coreRecord.data, now), cacheFile);
       return { ok: true, status };
     }
-    await writeCacheRecordImpl(failureRecord(existing, now), cacheFile);
+    await writeCacheRecordImpl(failureRecord(existing, { status, type: failureType }, now), cacheFile);
     return { ok: false, error: failureError };
   } finally {
-    await rm(tempCoreCache, { force: true });
+    try {
+      await rmImpl(tempCoreCache, { force: true });
+    } catch {}
+    try {
+      await releaseFetchLockImpl(process.env.STATUSLINE_LIMITS_FETCH_LOCK, process.env.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN);
+    } catch {}
   }
 }
 async function main() {
@@ -286,6 +363,7 @@ export {
   tokenFromKeychain,
   tokenFromCredentialsJson,
   successRecord,
+  releaseOwnedFetchLock,
   main,
   getToken,
   fetchAndCacheLimits,
