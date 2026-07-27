@@ -25,7 +25,7 @@ const COLORS = {
 const CACHE_MAX_AGE_MS = 5 * 60 * 1000;
 const FETCH_MIN_INTERVAL_MS = 60 * 1000;
 const FETCH_RATE_LIMIT_BACKOFF_MS = [60_000, 120_000, 300_000, 600_000, 1_200_000, 1_800_000];
-const FETCH_LOCK_STALE_MS = 30 * 60 * 1000;
+const FETCH_LOCK_STALE_MS = 10 * 60 * 1000;
 const FETCH_LOCK_RELEASE_SAFETY_MARGIN_MS = 60 * 1000;
 const TOKYO_TZ = "Asia/Tokyo";
 
@@ -362,6 +362,49 @@ function restoreOrRemoveMovedFetchLock(fromDir, toDir, lockFs) {
   }
 }
 
+function fetchLockPidFile(lockDir, ownerToken) {
+  return /^[A-Za-z0-9.]+$/.test(ownerToken) ? join(lockDir, `pid.${ownerToken}`) : null;
+}
+
+function recordedFetchLockPid(lockDir, ownerToken, lockFs) {
+  const pidFile = fetchLockPidFile(lockDir, ownerToken);
+  if (!pidFile) return null;
+  try {
+    const pid = Number(lockFs.readFileSync(pidFile, "utf8").trim());
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code !== "ESRCH";
+  }
+}
+
+function shouldReclaimFetchLock(lockDir, now, lockFs) {
+  try {
+    const stat = lockFs.statSync(lockDir);
+    if (Number.isFinite(stat.mtimeMs) && now - stat.mtimeMs > FETCH_LOCK_STALE_MS) return true;
+  } catch {
+    return false;
+  }
+
+  let ownerToken = null;
+  try {
+    ownerToken = lockFs.readFileSync(join(lockDir, "owner"), "utf8");
+  } catch {
+    return false;
+  }
+
+  const pid = recordedFetchLockPid(lockDir, ownerToken, lockFs);
+  return pid !== null && !isProcessAlive(pid);
+}
+
 function acquireFetchLock(lockDir, ownerToken, now = Date.now(), lockFs) {
   try {
     lockFs.mkdirSync(dirname(lockDir), { recursive: true, mode: 0o700 });
@@ -371,8 +414,7 @@ function acquireFetchLock(lockDir, ownerToken, now = Date.now(), lockFs) {
   }
 
   try {
-    const stat = lockFs.statSync(lockDir);
-    if (Number.isFinite(stat.mtimeMs) && now - stat.mtimeMs > FETCH_LOCK_STALE_MS) {
+    if (shouldReclaimFetchLock(lockDir, now, lockFs)) {
       const staleLockDir = `${lockDir}.stale.${process.pid}.${now}.${Math.random().toString(36).slice(2)}`;
       try {
         lockFs.renameSync(lockDir, staleLockDir);
@@ -380,8 +422,7 @@ function acquireFetchLock(lockDir, ownerToken, now = Date.now(), lockFs) {
         return false;
       }
       try {
-        const movedStat = lockFs.statSync(staleLockDir);
-        if (!Number.isFinite(movedStat.mtimeMs) || now - movedStat.mtimeMs <= FETCH_LOCK_STALE_MS) {
+        if (!shouldReclaimFetchLock(staleLockDir, now, lockFs)) {
           restoreOrRemoveMovedFetchLock(staleLockDir, lockDir, lockFs);
           return false;
         }
@@ -402,6 +443,15 @@ function acquireFetchLock(lockDir, ownerToken, now = Date.now(), lockFs) {
     }
   } catch {}
   return false;
+}
+
+function recordFetchLockPid(lockDir, ownerToken, pid, lockFs) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  const pidFile = fetchLockPidFile(lockDir, ownerToken);
+  if (!pidFile) return;
+  try {
+    lockFs.writeFileSync(pidFile, `${pid}\n`, { mode: 0o600 });
+  } catch {}
 }
 
 function releaseOwnedFetchLock(lockDir, ownerToken, lockFs) {
@@ -473,6 +523,7 @@ export function maybeSpawnLimitsFetch({
         STATUSLINE_LIMITS_FETCH_LOCK_TOKEN: lockOwnerToken,
       },
     });
+    recordFetchLockPid(lockDir, lockOwnerToken, child?.pid, lockFs);
     if (child?.once) {
       child.once("error", () => {
         releaseOwnedFetchLock(lockDir, lockOwnerToken, lockFs);

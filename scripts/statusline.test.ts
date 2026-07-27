@@ -1,4 +1,6 @@
-import { access, copyFile, mkdir, rm, utimes, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdirSync, readFileSync, rmSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
@@ -61,6 +63,19 @@ async function runStatusline(scriptPath: string, home: string) {
     proc.exited,
   ]);
   return { stdout, stderr, code };
+}
+
+async function waitForDeadPid(pid: number) {
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException)?.code === "ESRCH") return;
+      throw error;
+    }
+    await Bun.sleep(20);
+  }
+  throw new Error(`pid ${pid} stayed alive`);
 }
 
 describe("statusline.mjs", () => {
@@ -494,6 +509,179 @@ describe("statusline.mjs", () => {
         true,
       );
       expect(spawned).toBe(2);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("dead child pid が記録された lock は即座に回収する", async () => {
+    const dir = join(tmpdir(), `statusline-lock-dead-pid-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    let spawned = 0;
+    try {
+      await mkdir(lockDir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+      await writeFile(join(lockDir, "owner"), "previous.owner");
+      await writeFile(join(lockDir, "pid.previous.owner"), "99999999");
+
+      expect(
+        maybeSpawnLimitsFetch({
+          scriptDir: dir,
+          cacheFile,
+          spawnImpl: () => {
+            spawned += 1;
+            return { pid: process.pid, unref() {} };
+          },
+        }),
+      ).toBe(true);
+      expect(spawned).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("live child pid が記録された lock は回収しない", async () => {
+    const dir = join(tmpdir(), `statusline-lock-live-pid-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 30000)"], {
+      stdio: "ignore",
+    });
+    let spawned = 0;
+    try {
+      await mkdir(lockDir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+      await writeFile(join(lockDir, "owner"), "previous.owner");
+      await writeFile(join(lockDir, "pid.previous.owner"), String(child.pid));
+
+      expect(
+        maybeSpawnLimitsFetch({
+          scriptDir: dir,
+          cacheFile,
+          spawnImpl: () => {
+            spawned += 1;
+            return { pid: process.pid, unref() {} };
+          },
+        }),
+      ).toBe(false);
+      expect(spawned).toBe(0);
+    } finally {
+      child.kill();
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("pid ファイルの無い lock は stale になるまで回収しない", async () => {
+    const dir = join(tmpdir(), `statusline-lock-no-pid-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    let spawned = 0;
+    const spawnImpl = () => {
+      spawned += 1;
+      return { pid: process.pid, unref() {} };
+    };
+    try {
+      await mkdir(lockDir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+      await writeFile(join(lockDir, "owner"), "previous-owner");
+
+      const fresh = new Date(Date.now() - 9 * 60 * 1000);
+      await utimes(lockDir, fresh, fresh);
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile, spawnImpl })).toBe(false);
+
+      const stale = new Date(Date.now() - 11 * 60 * 1000);
+      await utimes(lockDir, stale, stale);
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile, spawnImpl })).toBe(true);
+      expect(spawned).toBe(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("lock を解放しない旧 fetcher の残留 lock は次回親実行で回収する", async () => {
+    const dir = join(tmpdir(), `statusline-lock-old-fetcher-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile })).toBe(true);
+      await expect(access(lockDir)).resolves.toBeFalsy();
+      const firstOwner = await readFile(join(lockDir, "owner"), "utf8");
+      const firstPid = Number((await readFile(join(lockDir, `pid.${firstOwner}`), "utf8")).trim());
+      await waitForDeadPid(firstPid);
+
+      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile })).toBe(true);
+      const secondOwner = await readFile(join(lockDir, "owner"), "utf8");
+      const secondPid = Number((await readFile(join(lockDir, `pid.${secondOwner}`), "utf8")).trim());
+      expect(secondPid).not.toBe(firstPid);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("late pid write for old owner does not make the new owner's lock reclaimable", async () => {
+    const dir = join(tmpdir(), `statusline-lock-late-pid-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    const newOwnerToken = "replacement.owner";
+    let firstSpawned = 0;
+    let secondSpawned = 0;
+    let firstOwnerToken = "";
+    let replacedLock = false;
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      expect(
+        maybeSpawnLimitsFetch({
+          scriptDir: dir,
+          cacheFile,
+          spawnImpl: () => {
+            firstSpawned += 1;
+            return { pid: 99999999, unref() {} };
+          },
+          lockFs: {
+            mkdirSync,
+            statSync,
+            rmSync,
+            renameSync,
+            readFileSync,
+            writeFileSync(path: string, data: string, options?: { mode?: number }) {
+              if (path === join(lockDir, "owner")) {
+                firstOwnerToken = data;
+              } else if (!replacedLock && path === join(lockDir, `pid.${firstOwnerToken}`)) {
+                replacedLock = true;
+                rmSync(lockDir, { recursive: true, force: true });
+                mkdirSync(lockDir, { recursive: true, mode: 0o700 });
+                writeFileSync(join(lockDir, "owner"), newOwnerToken, { mode: 0o600 });
+              }
+              writeFileSync(path, data, options);
+            },
+          },
+        }),
+      ).toBe(true);
+      expect(firstSpawned).toBe(1);
+      expect(await readFile(join(lockDir, "owner"), "utf8")).toBe(newOwnerToken);
+
+      expect(
+        maybeSpawnLimitsFetch({
+          scriptDir: dir,
+          cacheFile,
+          spawnImpl: () => {
+            secondSpawned += 1;
+            return { pid: process.pid, unref() {} };
+          },
+        }),
+      ).toBe(false);
+      expect(secondSpawned).toBe(0);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
