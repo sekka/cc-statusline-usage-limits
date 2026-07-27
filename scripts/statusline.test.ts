@@ -1,4 +1,5 @@
 import { access, copyFile, mkdir, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { mkdirSync, readFileSync, rmSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -522,8 +523,8 @@ describe("statusline.mjs", () => {
       await mkdir(lockDir, { recursive: true });
       await writeFile(join(dir, "limits-fetch.mjs"), "");
       await writeFile(join(dir, ".extended-approved"), "");
-      await writeFile(join(lockDir, "owner"), "previous-owner");
-      await writeFile(join(lockDir, "pid"), "99999999");
+      await writeFile(join(lockDir, "owner"), "previous.owner");
+      await writeFile(join(lockDir, "pid.previous.owner"), "99999999");
 
       expect(
         maybeSpawnLimitsFetch({
@@ -553,8 +554,8 @@ describe("statusline.mjs", () => {
       await mkdir(lockDir, { recursive: true });
       await writeFile(join(dir, "limits-fetch.mjs"), "");
       await writeFile(join(dir, ".extended-approved"), "");
-      await writeFile(join(lockDir, "owner"), "previous-owner");
-      await writeFile(join(lockDir, "pid"), String(child.pid));
+      await writeFile(join(lockDir, "owner"), "previous.owner");
+      await writeFile(join(lockDir, "pid.previous.owner"), String(child.pid));
 
       expect(
         maybeSpawnLimitsFetch({
@@ -612,12 +613,75 @@ describe("statusline.mjs", () => {
 
       expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile })).toBe(true);
       await expect(access(lockDir)).resolves.toBeFalsy();
-      const firstPid = Number((await readFile(join(lockDir, "pid"), "utf8")).trim());
+      const firstOwner = await readFile(join(lockDir, "owner"), "utf8");
+      const firstPid = Number((await readFile(join(lockDir, `pid.${firstOwner}`), "utf8")).trim());
       await waitForDeadPid(firstPid);
 
       expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile })).toBe(true);
-      const secondPid = Number((await readFile(join(lockDir, "pid"), "utf8")).trim());
+      const secondOwner = await readFile(join(lockDir, "owner"), "utf8");
+      const secondPid = Number((await readFile(join(lockDir, `pid.${secondOwner}`), "utf8")).trim());
       expect(secondPid).not.toBe(firstPid);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("late pid write for old owner does not make the new owner's lock reclaimable", async () => {
+    const dir = join(tmpdir(), `statusline-lock-late-pid-${process.pid}-${Date.now()}`);
+    const cacheFile = join(dir, "cache.json");
+    const lockDir = join(dir, ".fetch.lock");
+    const newOwnerToken = "replacement.owner";
+    let firstSpawned = 0;
+    let secondSpawned = 0;
+    let firstOwnerToken = "";
+    let replacedLock = false;
+    try {
+      await mkdir(dir, { recursive: true });
+      await writeFile(join(dir, "limits-fetch.mjs"), "");
+      await writeFile(join(dir, ".extended-approved"), "");
+
+      expect(
+        maybeSpawnLimitsFetch({
+          scriptDir: dir,
+          cacheFile,
+          spawnImpl: () => {
+            firstSpawned += 1;
+            return { pid: 99999999, unref() {} };
+          },
+          lockFs: {
+            mkdirSync,
+            statSync,
+            rmSync,
+            renameSync,
+            readFileSync,
+            writeFileSync(path: string, data: string, options?: { mode?: number }) {
+              if (path === join(lockDir, "owner")) {
+                firstOwnerToken = data;
+              } else if (!replacedLock && path === join(lockDir, `pid.${firstOwnerToken}`)) {
+                replacedLock = true;
+                rmSync(lockDir, { recursive: true, force: true });
+                mkdirSync(lockDir, { recursive: true, mode: 0o700 });
+                writeFileSync(join(lockDir, "owner"), newOwnerToken, { mode: 0o600 });
+              }
+              writeFileSync(path, data, options);
+            },
+          },
+        }),
+      ).toBe(true);
+      expect(firstSpawned).toBe(1);
+      expect(await readFile(join(lockDir, "owner"), "utf8")).toBe(newOwnerToken);
+
+      expect(
+        maybeSpawnLimitsFetch({
+          scriptDir: dir,
+          cacheFile,
+          spawnImpl: () => {
+            secondSpawned += 1;
+            return { pid: process.pid, unref() {} };
+          },
+        }),
+      ).toBe(false);
+      expect(secondSpawned).toBe(0);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

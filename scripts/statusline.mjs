@@ -362,9 +362,15 @@ function restoreOrRemoveMovedFetchLock(fromDir, toDir, lockFs) {
   }
 }
 
-function recordedFetchLockPid(lockDir, lockFs) {
+function fetchLockPidFile(lockDir, ownerToken) {
+  return /^[A-Za-z0-9.]+$/.test(ownerToken) ? join(lockDir, `pid.${ownerToken}`) : null;
+}
+
+function recordedFetchLockPid(lockDir, ownerToken, lockFs) {
+  const pidFile = fetchLockPidFile(lockDir, ownerToken);
+  if (!pidFile) return null;
   try {
-    const pid = Number(lockFs.readFileSync(join(lockDir, "pid"), "utf8").trim());
+    const pid = Number(lockFs.readFileSync(pidFile, "utf8").trim());
     return Number.isInteger(pid) && pid > 0 ? pid : null;
   } catch {
     return null;
@@ -388,7 +394,14 @@ function shouldReclaimFetchLock(lockDir, now, lockFs) {
     return false;
   }
 
-  const pid = recordedFetchLockPid(lockDir, lockFs);
+  let ownerToken = null;
+  try {
+    ownerToken = lockFs.readFileSync(join(lockDir, "owner"), "utf8");
+  } catch {
+    return false;
+  }
+
+  const pid = recordedFetchLockPid(lockDir, ownerToken, lockFs);
   return pid !== null && !isProcessAlive(pid);
 }
 
@@ -434,9 +447,10 @@ function acquireFetchLock(lockDir, ownerToken, now = Date.now(), lockFs) {
 
 function recordFetchLockPid(lockDir, ownerToken, pid, lockFs) {
   if (!Number.isInteger(pid) || pid <= 0) return;
+  const pidFile = fetchLockPidFile(lockDir, ownerToken);
+  if (!pidFile) return;
   try {
-    if (lockFs.readFileSync(join(lockDir, "owner"), "utf8") !== ownerToken) return;
-    lockFs.writeFileSync(join(lockDir, "pid"), `${pid}\n`, { mode: 0o600 });
+    lockFs.writeFileSync(pidFile, `${pid}\n`, { mode: 0o600 });
   } catch {}
 }
 
