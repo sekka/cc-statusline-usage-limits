@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.10](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.9...v1.0.10) (2026-07-27)
+
+
+### Bug Fixes
+
+* fetch lock の pid を owner に紐づける ([323066a](https://github.com/sekka/cc-statusline-usage-limits/commit/323066a8dedf660cc0d38774dbcced49e3405ca2))
+* statusline の fetch lock を親側で自己修復する ([d7825d8](https://github.com/sekka/cc-statusline-usage-limits/commit/d7825d898c5915f5042a23c7a153a27e13a7ab7d))
+
 ## [1.0.9](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.8...v1.0.9) (2026-07-23)
 
 
