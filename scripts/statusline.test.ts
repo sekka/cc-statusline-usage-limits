@@ -6,9 +6,11 @@ import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
 import {
   maybeSpawnLimitsFetch,
+  isFetcherContractStale,
   needsExtendedReapproval,
   parseInput,
   readCache,
+  readFetcherContract,
   renderStatusline,
 } from "./statusline.mjs";
 
@@ -170,6 +172,63 @@ describe("statusline.mjs", () => {
         extendedReapprovalRequired: true,
       }),
     ).toContain("Extended 要再承認 → /statusline-limits:install");
+  });
+
+  test("契約バージョンが一致すれば警告を出さない", () => {
+    expect(
+      renderStatusline(
+        { model: { display_name: "Sonnet 4.5" } },
+        { color: false, now: 2000000000000, fetcherContractStale: false },
+      ),
+    ).toBe("Sonnet 4.5");
+  });
+
+  test("契約バージョンが古ければ警告を出す", () => {
+    expect(
+      renderStatusline(
+        { model: { display_name: "Sonnet 4.5" } },
+        { color: false, now: 2000000000000, fetcherContractStale: true },
+      ),
+    ).toBe("Sonnet 4.5 fetcher が古い → /statusline-limits:install");
+  });
+
+  test("readFetcherContract は contractVersion を返す", async () => {
+    const dir = join(tmpdir(), `contract-${process.pid}-${Math.random().toString(36).slice(2)}`);
+    await mkdir(dir, { recursive: true });
+    const cacheFile = join(dir, "cache.json");
+    await writeFile(cacheFile, JSON.stringify({ contractVersion: 2, timestamp: 1, data: {} }));
+    expect(readFetcherContract(cacheFile)).toBe(2);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("readFetcherContract は版印なしのレコードで 0 を返す", async () => {
+    const dir = join(tmpdir(), `contract-${process.pid}-${Math.random().toString(36).slice(2)}`);
+    await mkdir(dir, { recursive: true });
+    const cacheFile = join(dir, "cache.json");
+    await writeFile(cacheFile, JSON.stringify({ timestamp: 1, lastAttempt: 2 }));
+    expect(readFetcherContract(cacheFile)).toBe(0);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("readFetcherContract は cache.json が無ければ null を返す", () => {
+    expect(readFetcherContract(join(tmpdir(), "no-such-cache-file.json"))).toBeNull();
+  });
+
+  test("isFetcherContractStale は版印が期待より古いときだけ true", () => {
+    expect(isFetcherContractStale(0)).toBe(true);
+    expect(isFetcherContractStale(1)).toBe(true);
+    expect(isFetcherContractStale(2)).toBe(false);
+    expect(isFetcherContractStale(3)).toBe(false);
+    expect(isFetcherContractStale(null)).toBe(false);
+  });
+
+  test("期待より新しい契約バージョンは stale 扱いしない", async () => {
+    const dir = join(tmpdir(), `contract-${process.pid}-${Math.random().toString(36).slice(2)}`);
+    await mkdir(dir, { recursive: true });
+    const cacheFile = join(dir, "cache.json");
+    await writeFile(cacheFile, JSON.stringify({ contractVersion: 3, timestamp: 1, data: {} }));
+    expect(isFetcherContractStale(readFetcherContract(cacheFile))).toBe(false);
+    await rm(dir, { recursive: true, force: true });
   });
 
   test("Core stdin と Extended cache から非 Fable weekly_scoped を含むゴールデンを描画する", () => {
@@ -336,9 +395,7 @@ describe("statusline.mjs", () => {
         },
         { cache: staleCoreCache, color: false, now: 2000000000000 },
       ),
-    ).toBe(
-      "Sonnet 4.5 CC5?:⣿⣶⣀⣀⣀ 33% (13:33|1h0m) CCW:⣿⣄⣀⣀⣀ 22% (5/19 07:13|18h40m) (6m ago)",
-    );
+    ).toBe("Sonnet 4.5 CC5?:⣿⣶⣀⣀⣀ 33% (13:33|1h0m) CCW:⣿⣄⣀⣀⣀ 22% (5/19 07:13|18h40m) (6m ago)");
   });
 
   test("core バケットが cache limits 配列だけに重複しても CC5 CCW CCF の順で描画する", () => {
@@ -495,9 +552,9 @@ describe("statusline.mjs", () => {
       expect(spawned).toBe(1);
       expect(spawnEnv?.STATUSLINE_LIMITS_FETCH_LOCK).toBe(join(dir, ".fetch.lock"));
       expect(spawnEnv?.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN).toBeTruthy();
-      expect(
-        await Bun.file(join(dir, ".fetch.lock", "owner")).text(),
-      ).toBe(spawnEnv?.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN);
+      expect(await Bun.file(join(dir, ".fetch.lock", "owner")).text()).toBe(
+        spawnEnv?.STATUSLINE_LIMITS_FETCH_LOCK_TOKEN,
+      );
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -614,18 +671,18 @@ describe("statusline.mjs", () => {
         spawned += 1;
         return { unref() {} };
       };
-      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl })).toBe(
-        true,
-      );
-      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl })).toBe(
-        false,
-      );
+      expect(
+        maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl }),
+      ).toBe(true);
+      expect(
+        maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl }),
+      ).toBe(false);
 
       const stale = new Date(Date.now() - 31 * 60 * 1000);
       await utimes(join(dir, ".fetch.lock"), stale, stale);
-      expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl })).toBe(
-        true,
-      );
+      expect(
+        maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile: join(dir, "cache.json"), spawnImpl }),
+      ).toBe(true);
       expect(spawned).toBe(2);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -737,7 +794,9 @@ describe("statusline.mjs", () => {
 
       expect(maybeSpawnLimitsFetch({ scriptDir: dir, cacheFile })).toBe(true);
       const secondOwner = await readFile(join(lockDir, "owner"), "utf8");
-      const secondPid = Number((await readFile(join(lockDir, `pid.${secondOwner}`), "utf8")).trim());
+      const secondPid = Number(
+        (await readFile(join(lockDir, `pid.${secondOwner}`), "utf8")).trim(),
+      );
       expect(secondPid).not.toBe(firstPid);
     } finally {
       await rm(dir, { recursive: true, force: true });
