@@ -91,6 +91,10 @@ export function readFetcherContract(cacheFile = defaultCacheFile()) {
   }
 }
 
+export function isFetcherContractStale(contract) {
+  return contract !== null && contract < EXPECTED_FETCHER_CONTRACT;
+}
+
 function color(text, name, options) {
   if (options.color === false) return text;
   return `${COLORS[name]}${text}${RESET}`;
@@ -373,7 +377,9 @@ function fetchBackoffMs(record) {
     record?.lastError?.type === "rate_limit" || Number(record?.lastError?.status) === 429;
   if (!isRateLimit) return FETCH_MIN_INTERVAL_MS;
   const failures = Math.max(1, Math.floor(Number(record?.consecutiveFailures) || 1));
-  return FETCH_RATE_LIMIT_BACKOFF_MS[Math.min(failures - 1, FETCH_RATE_LIMIT_BACKOFF_MS.length - 1)];
+  return FETCH_RATE_LIMIT_BACKOFF_MS[
+    Math.min(failures - 1, FETCH_RATE_LIMIT_BACKOFF_MS.length - 1)
+  ];
 }
 
 function shouldFetch(cacheFile, now = Date.now()) {
@@ -596,8 +602,7 @@ export async function main() {
   const input = parseInput(stdin);
   const cache = readCache();
   const extendedReapprovalRequired = needsExtendedReapproval();
-  const contract = readFetcherContract();
-  const fetcherContractStale = contract !== null && contract < EXPECTED_FETCHER_CONTRACT;
+  const fetcherContractStale = isFetcherContractStale(readFetcherContract());
   process.stdout.write(
     `${renderStatusline(input, { cache, extendedReapprovalRequired, fetcherContractStale })}\n`,
   );
