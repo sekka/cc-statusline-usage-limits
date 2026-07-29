@@ -23,6 +23,7 @@ const COLORS = {
 };
 
 const CACHE_MAX_AGE_MS = 5 * 60 * 1000;
+const EXPECTED_FETCHER_CONTRACT = 2;
 const FETCH_MIN_INTERVAL_MS = 60 * 1000;
 const FETCH_RATE_LIMIT_BACKOFF_MS = [60_000, 120_000, 300_000, 600_000, 1_200_000, 1_800_000];
 const FETCH_LOCK_STALE_MS = 10 * 60 * 1000;
@@ -68,6 +69,23 @@ export function readCache(cacheFile = defaultCacheFile(), now = Date.now()) {
           ? record.timestamp > now || now - record.timestamp > CACHE_MAX_AGE_MS
           : true,
     };
+  } catch {
+    return null;
+  }
+}
+
+export function readFetcherContract(cacheFile = defaultCacheFile()) {
+  let raw;
+  try {
+    raw = readFileSync(cacheFile, "utf8");
+  } catch {
+    return null;
+  }
+  try {
+    const record = JSON.parse(raw);
+    if (record === null || typeof record !== "object") return null;
+    const version = Number(record.contractVersion);
+    return Number.isFinite(version) ? version : 0;
   } catch {
     return null;
   }
@@ -312,6 +330,9 @@ export function renderStatusline(input, options = {}) {
   for (const item of limits) parts.push(renderLimit(item, renderOptions));
   if (options.extendedReapprovalRequired) {
     parts.push(color("Extended 要再承認 → /statusline-limits:install", "yellow", renderOptions));
+  }
+  if (options.fetcherContractStale) {
+    parts.push(color("fetcher が古い → /statusline-limits:install", "yellow", renderOptions));
   }
   if (
     limits.some((item) => item.cacheSource) &&
@@ -575,7 +596,11 @@ export async function main() {
   const input = parseInput(stdin);
   const cache = readCache();
   const extendedReapprovalRequired = needsExtendedReapproval();
-  process.stdout.write(`${renderStatusline(input, { cache, extendedReapprovalRequired })}\n`);
+  const contract = readFetcherContract();
+  const fetcherContractStale = contract !== null && contract < EXPECTED_FETCHER_CONTRACT;
+  process.stdout.write(
+    `${renderStatusline(input, { cache, extendedReapprovalRequired, fetcherContractStale })}\n`,
+  );
 }
 
 if (

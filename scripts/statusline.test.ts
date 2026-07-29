@@ -9,6 +9,7 @@ import {
   needsExtendedReapproval,
   parseInput,
   readCache,
+  readFetcherContract,
   renderStatusline,
 } from "./statusline.mjs";
 
@@ -170,6 +171,57 @@ describe("statusline.mjs", () => {
         extendedReapprovalRequired: true,
       }),
     ).toContain("Extended 要再承認 → /statusline-limits:install");
+  });
+
+  test("契約バージョンが一致すれば警告を出さない", () => {
+    expect(
+      renderStatusline(
+        { model: { display_name: "Sonnet 4.5" } },
+        { color: false, now: 2000000000000, fetcherContractStale: false },
+      ),
+    ).toBe("Sonnet 4.5");
+  });
+
+  test("契約バージョンが古ければ警告を出す", () => {
+    expect(
+      renderStatusline(
+        { model: { display_name: "Sonnet 4.5" } },
+        { color: false, now: 2000000000000, fetcherContractStale: true },
+      ),
+    ).toBe("Sonnet 4.5 fetcher が古い → /statusline-limits:install");
+  });
+
+  test("readFetcherContract は contractVersion を返す", async () => {
+    const dir = join(tmpdir(), `contract-${process.pid}-${Math.random().toString(36).slice(2)}`);
+    await mkdir(dir, { recursive: true });
+    const cacheFile = join(dir, "cache.json");
+    await writeFile(cacheFile, JSON.stringify({ contractVersion: 2, timestamp: 1, data: {} }));
+    expect(readFetcherContract(cacheFile)).toBe(2);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("readFetcherContract は版印なしのレコードで 0 を返す", async () => {
+    const dir = join(tmpdir(), `contract-${process.pid}-${Math.random().toString(36).slice(2)}`);
+    await mkdir(dir, { recursive: true });
+    const cacheFile = join(dir, "cache.json");
+    await writeFile(cacheFile, JSON.stringify({ timestamp: 1, lastAttempt: 2 }));
+    expect(readFetcherContract(cacheFile)).toBe(0);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  test("readFetcherContract は cache.json が無ければ null を返す", () => {
+    expect(readFetcherContract(join(tmpdir(), "no-such-cache-file.json"))).toBeNull();
+  });
+
+  test("期待より新しい契約バージョンは stale 扱いしない", async () => {
+    const dir = join(tmpdir(), `contract-${process.pid}-${Math.random().toString(36).slice(2)}`);
+    await mkdir(dir, { recursive: true });
+    const cacheFile = join(dir, "cache.json");
+    await writeFile(cacheFile, JSON.stringify({ contractVersion: 3, timestamp: 1, data: {} }));
+    const contract = readFetcherContract(cacheFile);
+    expect(contract).toBe(3);
+    expect(contract !== null && contract < 2).toBe(false);
+    await rm(dir, { recursive: true, force: true });
   });
 
   test("Core stdin と Extended cache から非 Fable weekly_scoped を含むゴールデンを描画する", () => {
