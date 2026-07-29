@@ -247,6 +247,34 @@ function cacheLimits(cache, now) {
   return items;
 }
 
+function mergeLimitItems(stdinItems, cacheItems) {
+  const stdinByLabel = new Map(stdinItems.map((item) => [item.label, item]));
+  const coreLabels = new Set(["CC5", "CCW"]);
+  const selectedCoreLabels = new Set();
+  const items = [];
+
+  for (const labelText of coreLabels) {
+    const stdinItem = stdinByLabel.get(labelText);
+    if (stdinItem) {
+      items.push(stdinItem);
+      selectedCoreLabels.add(labelText);
+      continue;
+    }
+    const cacheItem = cacheItems.find((item) => item.label === labelText);
+    if (cacheItem) {
+      items.push(cacheItem);
+      selectedCoreLabels.add(labelText);
+    }
+  }
+
+  for (const cacheItem of cacheItems) {
+    if (coreLabels.has(cacheItem.label) && selectedCoreLabels.has(cacheItem.label)) continue;
+    items.push(cacheItem);
+  }
+
+  return items;
+}
+
 export function renderStatusline(input, options = {}) {
   const renderOptions = {
     color: options.color ?? process.env.NO_COLOR === undefined,
@@ -270,21 +298,23 @@ export function renderStatusline(input, options = {}) {
 
   const cacheItems = cacheLimits(options.cache?.data, renderOptions.now).map((item) => ({
     ...item,
+    cacheSource: true,
     stale:
       item.stale ||
       Boolean(options.cache?.stale) ||
       (typeof options.cache?.timestamp === "number" &&
         renderOptions.now - options.cache.timestamp > CACHE_MAX_AGE_MS),
   }));
-  const limits = cacheItems.length
-    ? cacheItems
-    : [coreRateLimit(input, "five_hour"), coreRateLimit(input, "seven_day")].filter(Boolean);
+  const stdinItems = [coreRateLimit(input, "five_hour"), coreRateLimit(input, "seven_day")].filter(
+    Boolean,
+  );
+  const limits = mergeLimitItems(stdinItems, cacheItems);
   for (const item of limits) parts.push(renderLimit(item, renderOptions));
   if (options.extendedReapprovalRequired) {
     parts.push(color("Extended 要再承認 → /statusline-limits:install", "yellow", renderOptions));
   }
   if (
-    cacheItems.length > 0 &&
+    limits.some((item) => item.cacheSource) &&
     (options.cache?.stale ||
       (typeof options.cache?.timestamp === "number" &&
         renderOptions.now - options.cache.timestamp > CACHE_MAX_AGE_MS)) &&
