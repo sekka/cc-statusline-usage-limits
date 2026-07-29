@@ -186,14 +186,23 @@ async function readJsonFile(cacheFile, readFileImpl = readFile2) {
     return null;
   }
 }
+var CONTRACT_VERSION = 2;
 function successRecord(data, now = Date.now()) {
-  return { timestamp: now, lastAttempt: now, consecutiveFailures: 0, lastError: null, data };
+  return {
+    contractVersion: CONTRACT_VERSION,
+    timestamp: now,
+    lastAttempt: now,
+    consecutiveFailures: 0,
+    lastError: null,
+    data
+  };
 }
 function failureRecord(existing, failure, now = Date.now()) {
   const previousFailures = Number(existing?.consecutiveFailures);
   const normalizedFailures = Number.isFinite(previousFailures) ? Math.max(0, Math.floor(previousFailures)) : 0;
   const consecutiveFailures = normalizedFailures + 1;
   return {
+    contractVersion: CONTRACT_VERSION,
     timestamp: existing?.timestamp,
     lastAttempt: now,
     consecutiveFailures,
@@ -368,5 +377,6 @@ export {
   getToken,
   fetchAndCacheLimits,
   failureRecord,
-  cacheFilePath
+  cacheFilePath,
+  CONTRACT_VERSION
 };

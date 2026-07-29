@@ -68,8 +68,17 @@ async function readJsonFile(cacheFile: string, readFileImpl: typeof readFile = r
   }
 }
 
+export const CONTRACT_VERSION = 2;
+
 export function successRecord(data: unknown, now = Date.now()) {
-  return { timestamp: now, lastAttempt: now, consecutiveFailures: 0, lastError: null, data };
+  return {
+    contractVersion: CONTRACT_VERSION,
+    timestamp: now,
+    lastAttempt: now,
+    consecutiveFailures: 0,
+    lastError: null,
+    data,
+  };
 }
 
 type FailureInfo = {
@@ -84,6 +93,7 @@ export function failureRecord(existing: any, failure: FailureInfo, now = Date.no
     : 0;
   const consecutiveFailures = normalizedFailures + 1;
   return {
+    contractVersion: CONTRACT_VERSION,
     timestamp: existing?.timestamp,
     lastAttempt: now,
     consecutiveFailures,

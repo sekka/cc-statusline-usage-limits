@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, test } from "bun:test";
 import {
+  CONTRACT_VERSION,
   failureRecord,
   fetchAndCacheLimits,
   getToken,
@@ -15,6 +16,35 @@ import {
 } from "./limits-fetch.mjs";
 
 describe("limits-fetch.mjs", () => {
+  test("CONTRACT_VERSION は 2", () => {
+    expect(CONTRACT_VERSION).toBe(2);
+  });
+
+  test("success record は contractVersion を含む", () => {
+    expect(successRecord({ five_hour: null }, 100)).toMatchObject({
+      contractVersion: 2,
+      timestamp: 100,
+      lastAttempt: 100,
+      consecutiveFailures: 0,
+      lastError: null,
+    });
+  });
+
+  test("failure record は contractVersion を含む", () => {
+    expect(failureRecord({ timestamp: 50 }, { type: "http_error", status: 500 }, 100)).toMatchObject({
+      contractVersion: 2,
+      timestamp: 50,
+      lastAttempt: 100,
+      consecutiveFailures: 1,
+    });
+  });
+
+  test("既存レコードの古い contractVersion は現在値で上書きする", () => {
+    expect(
+      failureRecord({ timestamp: 50, contractVersion: 1 }, { type: "network" }, 100),
+    ).toMatchObject({ contractVersion: 2 });
+  });
+
   test("credentials json から token を読む", () => {
     expect(
       tokenFromCredentialsJson(JSON.stringify({ claudeAiOauth: { accessToken: "tok" } })),
@@ -49,6 +79,7 @@ describe("limits-fetch.mjs", () => {
   test("success record と failure record を生成する", () => {
     const data = { limits: [] };
     expect(successRecord(data, 123)).toEqual({
+      contractVersion: 2,
       timestamp: 123,
       lastAttempt: 123,
       consecutiveFailures: 0,
@@ -61,6 +92,7 @@ describe("limits-fetch.mjs", () => {
         type: "rate_limit",
       }, 123),
     ).toEqual({
+      contractVersion: 2,
       timestamp: 100,
       lastAttempt: 123,
       consecutiveFailures: 2,
@@ -71,6 +103,7 @@ describe("limits-fetch.mjs", () => {
 
   test("success record は失敗カウンタと lastError をリセットする", () => {
     expect(successRecord({ limits: [] }, 456)).toEqual({
+      contractVersion: 2,
       timestamp: 456,
       lastAttempt: 456,
       consecutiveFailures: 0,
@@ -122,6 +155,7 @@ describe("limits-fetch.mjs", () => {
       });
       expect(result).toEqual({ ok: true, status: 200 });
       expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+        contractVersion: 2,
         timestamp: 456,
         lastAttempt: 456,
         consecutiveFailures: 0,
@@ -148,6 +182,7 @@ describe("limits-fetch.mjs", () => {
       });
       expect(result.ok).toBe(false);
       expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+        contractVersion: 2,
         timestamp: 100,
         lastAttempt: 200,
         consecutiveFailures: 1,
@@ -174,6 +209,7 @@ describe("limits-fetch.mjs", () => {
       });
       expect(result).toEqual({ ok: false, error: "missing Claude credential" });
       expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+        contractVersion: 2,
         lastAttempt: 300,
         consecutiveFailures: 1,
         lastError: { type: "missing_credential", at: 300 },
@@ -216,6 +252,7 @@ describe("limits-fetch.mjs", () => {
       });
       expect(result).toEqual({ ok: false, error: "usage API returned HTTP 429" });
       expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+        contractVersion: 2,
         timestamp: 100,
         lastAttempt: 600,
         consecutiveFailures: 1,
@@ -241,6 +278,7 @@ describe("limits-fetch.mjs", () => {
       });
       expect(result).toEqual({ ok: false, error: "usage API returned HTTP 400" });
       expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+        contractVersion: 2,
         lastAttempt: 700,
         consecutiveFailures: 1,
         lastError: { status: 400, type: "rate_limit", at: 700 },
@@ -263,6 +301,7 @@ describe("limits-fetch.mjs", () => {
       });
       expect(result).toEqual({ ok: false, error: "usage API returned HTTP 401" });
       expect(JSON.parse(await readFile(file, "utf8"))).toEqual({
+        contractVersion: 2,
         lastAttempt: 750,
         consecutiveFailures: 1,
         lastError: { status: 401, type: "authentication_error", at: 750 },
