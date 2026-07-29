@@ -270,6 +270,107 @@ describe("statusline.mjs", () => {
     );
   });
 
+  test("stdin の used_percentage が 0 でも stale cache に fallback しない", () => {
+    const staleCoreCache = {
+      data: {
+        five_hour: { percent: 83, resets_at: "2033-05-18T04:33:20.000Z" },
+      },
+      stale: true,
+      timestamp: 2000000000000 - 9 * 60 * 1000,
+    };
+
+    expect(
+      renderStatusline(
+        {
+          model: { display_name: "Sonnet 4.5" },
+          rate_limits: {
+            five_hour: { used_percentage: 0, resets_at: 2000003600 },
+          },
+        },
+        { cache: staleCoreCache, color: false, now: 2000000000000 },
+      ),
+    ).toBe("Sonnet 4.5 CC5:⣀⣀⣀⣀⣀ 0% (13:33|1h0m)");
+  });
+
+  test("stdin core と cache CCF の併用では stale age suffix を残す", () => {
+    const staleFableCache = {
+      data: {
+        limits: [
+          {
+            kind: "weekly_scoped",
+            percent: 71,
+            resets_at: "2033-05-18T22:13:20.000Z",
+            scope: { model: { display_name: "Fable" } },
+          },
+        ],
+      },
+      stale: true,
+      timestamp: 2000000000000 - 6 * 60 * 1000,
+    };
+
+    expect(
+      renderStatusline(fixture, { cache: staleFableCache, color: false, now: 2000000000000 }),
+    ).toBe(
+      "Sonnet 4.5 TK:⣿⣿⣶⣀⣀ 54% 108.0K/200.0K CC5:⣿⣿⣿⣀⣀ 61% (13:33|1h0m) CCW:⣿⣄⣀⣀⣀ 22% (5/19 07:13|18h40m) CCF?:⣿⣿⣿⣦⣀ 71% (5/19 07:13|18h40m) (6m ago)",
+    );
+  });
+
+  test("stdin の無効な CC5 だけ cache に窓ごと fallback する", () => {
+    const staleCoreCache = {
+      data: {
+        five_hour: { percent: 33, resets_at: "2033-05-18T04:33:20.000Z" },
+        seven_day: { percent: 88, resets_at: "2033-05-18T22:13:20.000Z" },
+      },
+      stale: true,
+      timestamp: 2000000000000 - 6 * 60 * 1000,
+    };
+
+    expect(
+      renderStatusline(
+        {
+          model: { display_name: "Sonnet 4.5" },
+          rate_limits: {
+            five_hour: null,
+            seven_day: { used_percentage: 22, resets_at: 2000067200 },
+          },
+        },
+        { cache: staleCoreCache, color: false, now: 2000000000000 },
+      ),
+    ).toBe(
+      "Sonnet 4.5 CC5?:⣿⣶⣀⣀⣀ 33% (13:33|1h0m) CCW:⣿⣄⣀⣀⣀ 22% (5/19 07:13|18h40m) (6m ago)",
+    );
+  });
+
+  test("core バケットが cache limits 配列だけに重複しても CC5 CCW CCF の順で描画する", () => {
+    const limitsOnlyCache = {
+      data: {
+        limits: [
+          {
+            kind: "weekly_scoped",
+            percent: 71,
+            resets_at: "2033-05-18T22:13:20.000Z",
+            scope: { model: { display_name: "Fable" } },
+          },
+          { bucket: "seven_day", usage: { percent: 22, resets_at: "2033-05-18T22:13:20.000Z" } },
+          { bucket: "five_hour", usage: { percent: 33, resets_at: "2033-05-18T04:33:20.000Z" } },
+          { bucket: "five_hour", usage: { percent: 99, resets_at: "2033-05-18T04:33:20.000Z" } },
+          { bucket: "seven_day", usage: { percent: 88, resets_at: "2033-05-18T22:13:20.000Z" } },
+        ],
+      },
+      stale: false,
+      timestamp: 2000000000000,
+    };
+
+    expect(
+      renderStatusline(
+        { model: { display_name: "Sonnet 4.5" } },
+        { cache: limitsOnlyCache, color: false, now: 2000000000000 },
+      ),
+    ).toBe(
+      "Sonnet 4.5 CC5:⣿⣶⣀⣀⣀ 33% (13:33|1h0m) CCW:⣿⣄⣀⣀⣀ 22% (5/19 07:13|18h40m) CCF:⣿⣿⣿⣦⣀ 71% (5/19 07:13|18h40m)",
+    );
+  });
+
   test("未来 timestamp の stale age suffix は 0m ago に丸める", () => {
     expect(
       renderStatusline(
