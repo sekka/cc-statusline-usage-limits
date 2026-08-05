@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.0](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.11...v1.1.0) (2026-08-05)
+
+
+### Features
+
+* fetcher が書くレコードに契約バージョンを含める ([ad4c5c7](https://github.com/sekka/cc-statusline-usage-limits/commit/ad4c5c769f4ec2de23e174d083934b6c79f74d5c))
+* renderer が fetcher の契約バージョンずれを検出して表示する ([0ae5d6c](https://github.com/sekka/cc-statusline-usage-limits/commit/0ae5d6c3288c0294552fdbcf7b8634c2a174149a))
+
 ## [1.0.11](https://github.com/sekka/cc-statusline-usage-limits/compare/v1.0.10...v1.0.11) (2026-07-29)
 
 
